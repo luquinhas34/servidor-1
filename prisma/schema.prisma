@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int            @id @default(autoincrement())
+  email     String         @unique
+  name      String
+  password  String
+  role      String
+  avaliacao Avaliacao[]    // Relacionamento 1:N
+  diarios   Diario[]       // Relacionamento 1:N
+  tarefas   Atividade[]    // Relacionamento 1:N
+  avisos    Aviso[]        // Relacionamento 1:N
+  chamadas  Chamadas[]     // Relacionamento 1:N
+  turmas    TurmaUsuario[] // Relacionamento M:N
+}
+
+
+model Turma {
+  id         Int            @id @default(autoincrement())
+  nome       String
+  descricao  String?
+  chamadas   Chamadas[]
+  usuarios   TurmaUsuario[]
+  atividades Atividade[] // Adicionado
+  avaliacoes Avaliacao[] // Adicionado
+  presencas Presenca[]
+}
+
+model TurmaUsuario {
+  id       Int  @id @default(autoincrement())
+  userId   Int
+  turmaId  Int
+  turma    Turma @relation(fields: [turmaId], references: [id])
+  user     User  @relation(fields: [userId], references: [id])
+
+  @@unique([userId, turmaId]) // Garante que a relação seja única
+}
+
+model Chamadas {
+  id        Int        @id @default(autoincrement())
+  data      DateTime   @default(now())
+  nome      String
+  materia   String
+  turmaId   Int
+  turma     Turma      @relation(fields: [turmaId], references: [id])
+  presencas Presenca[]
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@map("chamadas")
+}
+
+model Presenca {
+  id        Int      @id @default(autoincrement())
+  alunoId   Int
+  chamadaId Int
+  turmaId Int
+  turma     Turma      @relation(fields: [turmaId], references: [id])
+  
+  status    Status
+  chamada   Chamadas @relation(fields: [chamadaId], references: [id])
+  @@map("presencas")
+}
+
+model Diario {
+  id      Int      @id @default(autoincrement())
+  alunoId Int
+  data    DateTime @default(now())
+  status  Status // Presença ou falta
+  user    User     @relation(fields: [userId], references: [id])
+  userId  Int
+
+  @@map("diarios")
+}
+
+enum Status {
+  PRESENCA
+  FALTA
+}
+
+model Atividade {
+  id         Int      @id @default(autoincrement())
+  titulo     String
+  descricao  String
+  dataInicio DateTime
+  dataFim    DateTime
+  turmaId    Int
+  turma      Turma    @relation(fields: [turmaId], references: [id])
+  documento  String?
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model Aviso {
+  id        Int      @id @default(autoincrement())
+  titulo    String   @db.VarChar(100)
+  descricao String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+
+  // @@index([userId], name: "Aviso_userId_fkey")
+  @@map("avisos")
+}
+
+model Avaliacao {
+  id         Int      @id @default(autoincrement())
+  titulo     String
+  descricao  String
+  turmaId    Int
+  turma      Turma    @relation(fields: [turmaId], references: [id])
+  dataInicio DateTime
+  dataFim    DateTime
+  documento  String?
+  userId     Int
+  data       DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("avaliacoes")
+}
