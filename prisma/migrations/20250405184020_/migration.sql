@@ -56,6 +56,7 @@ CREATE TABLE `presencas` (
 CREATE TABLE `diarios` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `alunoId` INTEGER NOT NULL,
+    `turmaId` INTEGER NOT NULL,
     `data` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `status` ENUM('PRESENCA', 'FALTA') NOT NULL,
     `userId` INTEGER NOT NULL,
@@ -104,6 +105,44 @@ CREATE TABLE `avaliacoes` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- CreateTable
+CREATE TABLE `Chat` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `titulo` VARCHAR(191) NULL,
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `ChatParticipante` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `chatId` INTEGER NOT NULL,
+    `userId` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `Mensagem` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `texto` VARCHAR(191) NOT NULL,
+    `chatId` INTEGER NOT NULL,
+    `remetenteId` INTEGER NOT NULL,
+    `data` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `_DiarioToPresenca` (
+    `A` INTEGER NOT NULL,
+    `B` INTEGER NOT NULL,
+
+    UNIQUE INDEX `_DiarioToPresenca_AB_unique`(`A`, `B`),
+    INDEX `_DiarioToPresenca_B_index`(`B`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- AddForeignKey
 ALTER TABLE `TurmaUsuario` ADD CONSTRAINT `TurmaUsuario_turmaId_fkey` FOREIGN KEY (`turmaId`) REFERENCES `Turma`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -126,6 +165,9 @@ ALTER TABLE `presencas` ADD CONSTRAINT `presencas_chamadaId_fkey` FOREIGN KEY (`
 ALTER TABLE `diarios` ADD CONSTRAINT `diarios_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `diarios` ADD CONSTRAINT `diarios_turmaId_fkey` FOREIGN KEY (`turmaId`) REFERENCES `Turma`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `Atividade` ADD CONSTRAINT `Atividade_turmaId_fkey` FOREIGN KEY (`turmaId`) REFERENCES `Turma`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -139,3 +181,21 @@ ALTER TABLE `avaliacoes` ADD CONSTRAINT `avaliacoes_turmaId_fkey` FOREIGN KEY (`
 
 -- AddForeignKey
 ALTER TABLE `avaliacoes` ADD CONSTRAINT `avaliacoes_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `ChatParticipante` ADD CONSTRAINT `ChatParticipante_chatId_fkey` FOREIGN KEY (`chatId`) REFERENCES `Chat`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `ChatParticipante` ADD CONSTRAINT `ChatParticipante_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `Mensagem` ADD CONSTRAINT `Mensagem_remetenteId_fkey` FOREIGN KEY (`remetenteId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `Mensagem` ADD CONSTRAINT `Mensagem_chatId_fkey` FOREIGN KEY (`chatId`) REFERENCES `Chat`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `_DiarioToPresenca` ADD CONSTRAINT `_DiarioToPresenca_A_fkey` FOREIGN KEY (`A`) REFERENCES `diarios`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `_DiarioToPresenca` ADD CONSTRAINT `_DiarioToPresenca_B_fkey` FOREIGN KEY (`B`) REFERENCES `presencas`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

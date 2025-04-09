@@ -8,19 +8,20 @@ datasource db {
 }
 
 model User {
-  id        Int            @id @default(autoincrement())
-  email     String         @unique
-  name      String
-  password  String
-  role      String
-  avaliacao Avaliacao[]    // Relacionamento 1:N
-  diarios   Diario[]       // Relacionamento 1:N
-  tarefas   Atividade[]    // Relacionamento 1:N
-  avisos    Aviso[]        // Relacionamento 1:N
-  chamadas  Chamadas[]     // Relacionamento 1:N
-  turmas    TurmaUsuario[] // Relacionamento M:N
+  id                Int                @id @default(autoincrement())
+  email             String             @unique
+  name              String
+  password          String
+  role              String
+  avaliacao         Avaliacao[]
+  diarios           Diario[]
+  tarefas           Atividade[]
+  avisos            Aviso[]
+  chamadas          Chamadas[]
+  turmas            TurmaUsuario[]
+  mensagens         Mensagem[]         @relation("MensagensAutor")
+  chatsParticipando ChatParticipante[]
 }
-
 
 model Turma {
   id         Int            @id @default(autoincrement())
@@ -28,19 +29,20 @@ model Turma {
   descricao  String?
   chamadas   Chamadas[]
   usuarios   TurmaUsuario[]
-  atividades Atividade[] // Adicionado
-  avaliacoes Avaliacao[] // Adicionado
-  presencas Presenca[]
+  atividades Atividade[]
+  avaliacoes Avaliacao[]
+  presencas  Presenca[]
+  Diario     Diario[]
 }
 
 model TurmaUsuario {
-  id       Int  @id @default(autoincrement())
-  userId   Int
-  turmaId  Int
-  turma    Turma @relation(fields: [turmaId], references: [id])
-  user     User  @relation(fields: [userId], references: [id])
+  id      Int   @id @default(autoincrement())
+  userId  Int
+  turmaId Int
+  turma   Turma @relation(fields: [turmaId], references: [id])
+  user    User  @relation(fields: [userId], references: [id])
 
-  @@unique([userId, turmaId]) // Garante que a relação seja única
+  @@unique([userId, turmaId])
 }
 
 model Chamadas {
@@ -58,24 +60,30 @@ model Chamadas {
 }
 
 model Presenca {
-  id        Int      @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   alunoId   Int
   chamadaId Int
-  turmaId Int
-  turma     Turma      @relation(fields: [turmaId], references: [id])
-  
+  turmaId   Int
   status    Status
-  chamada   Chamadas @relation(fields: [chamadaId], references: [id])
+
+  turma   Turma    @relation(fields: [turmaId], references: [id])
+  chamada Chamadas @relation(fields: [chamadaId], references: [id])
+  Diario  Diario[]
+
   @@map("presencas")
 }
 
 model Diario {
   id      Int      @id @default(autoincrement())
   alunoId Int
+  turmaId Int
   data    DateTime @default(now())
-  status  Status // Presença ou falta
-  user    User     @relation(fields: [userId], references: [id])
+  status  Status
   userId  Int
+
+  user      User       @relation(fields: [userId], references: [id])
+  turma     Turma      @relation(fields: [turmaId], references: [id])
+  presencas Presenca[]
 
   @@map("diarios")
 }
@@ -92,10 +100,11 @@ model Atividade {
   dataInicio DateTime
   dataFim    DateTime
   turmaId    Int
-  turma      Turma    @relation(fields: [turmaId], references: [id])
   documento  String?
   userId     Int
-  user       User     @relation(fields: [userId], references: [id])
+
+  turma Turma @relation(fields: [turmaId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
 }
 
 model Aviso {
@@ -105,9 +114,9 @@ model Aviso {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
 
-  // @@index([userId], name: "Aviso_userId_fkey")
+  user User @relation(fields: [userId], references: [id])
+
   @@map("avisos")
 }
 
@@ -116,13 +125,45 @@ model Avaliacao {
   titulo     String
   descricao  String
   turmaId    Int
-  turma      Turma    @relation(fields: [turmaId], references: [id])
   dataInicio DateTime
   dataFim    DateTime
   documento  String?
   userId     Int
   data       DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+
+  turma Turma @relation(fields: [turmaId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
 
   @@map("avaliacoes")
 }
+
+model Chat {
+  id              Int              @id @default(autoincrement())
+  titulo          String?
+  participantes   ChatParticipante[]
+  mensagens       Mensagem[]
+  updatedAt       DateTime         @updatedAt
+}
+
+
+model ChatParticipante {
+  id     Int   @id @default(autoincrement())
+  user   User  @relation(fields: [userId], references: [id])
+  userId Int
+  chat   Chat  @relation(fields: [chatId], references: [id])
+  chatId Int
+}
+
+
+model Mensagem {
+  id          Int      @id @default(autoincrement())
+  texto       String
+  chatId      Int
+  remetenteId Int
+  data        DateTime @default(now())
+  remetente   User     @relation("MensagensAutor", fields: [remetenteId], references: [id])
+  chat        Chat     @relation(fields: [chatId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+

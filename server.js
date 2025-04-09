@@ -6,16 +6,15 @@ import cors from "cors";
 import dotenv from "dotenv";
 import auth from "./middlewares/auth.js";
 import multer from "multer";
+const app = express();
 
 dotenv.config();
 
-const app = express();
 const prisma = new PrismaClient();
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
-
+app.use(cors());
 app.use(express.json());
-app.use(cors({ origin: "*" }));
 
 // Conectar ao banco de dados
 async function connectDatabase() {
@@ -140,49 +139,79 @@ app.get("/api/usuarios", async (req, res) => {
 });
 
 // Rota de busca de atividades
-app.get("/api/atividades", auth, async (req, res) => {
+app.get("/api/atividades", async (req, res) => {
   try {
     const atividades = await prisma.atividade.findMany({
-      where: { userId: req.userId },
+      include: {
+        turma: true, // se quiser detalhes da turma
+        user: true, // se quiser detalhes do professor
+      },
     });
-    res.status(200).json(atividades);
-  } catch (err) {
-    console.error("Erro ao buscar atividades:", err);
+    res.json(atividades);
+  } catch (error) {
+    console.error("Erro ao buscar atividades:", error);
     res.status(500).json({ message: "Erro ao buscar atividades." });
   }
 });
+
 app.post(
   "/api/atividades",
   auth,
   upload.single("documento"),
   async (req, res) => {
     try {
+      console.log("Dados do corpo da requisição:", req.body);
+      console.log("Arquivo enviado:", req.file);
+
       const { titulo, descricao, dataInicio, dataFim, turmaId, userId } =
         req.body;
 
+      // Verificação de campos obrigatórios
       if (!titulo || !descricao || !turmaId || !userId) {
         return res
           .status(400)
           .json({ message: "Campos obrigatórios ausentes!" });
       }
 
+      // Convertendo datas de forma segura
+      const dataInicioParsed = isNaN(Date.parse(dataInicio))
+        ? null
+        : new Date(dataInicio);
+      const dataFimParsed = isNaN(Date.parse(dataFim))
+        ? null
+        : new Date(dataFim);
+
+      if (!dataInicioParsed || !dataFimParsed) {
+        return res.status(400).json({ message: "Datas inválidas!" });
+      }
+
+      // Convertendo IDs de forma segura
+      const turmaIdParsed = Number(turmaId);
+      const userIdParsed = Number(userId);
+
+      if (isNaN(turmaIdParsed) || isNaN(userIdParsed)) {
+        return res.status(400).json({ message: "IDs inválidos!" });
+      }
+
+      // Verificar se o usuário existe
       const userExists = await prisma.user.findUnique({
-        where: { id: parseInt(userId, 10) },
+        where: { id: userIdParsed },
       });
 
       if (!userExists) {
         return res.status(404).json({ message: "Usuário não encontrado." });
       }
 
+      // Criar atividade
       const atividade = await prisma.atividade.create({
         data: {
           titulo,
           descricao,
-          dataInicio: new Date(dataInicio),
-          dataFim: new Date(dataFim),
-          turma: { connect: { id: turmaId } },
+          dataInicio: dataInicioParsed,
+          dataFim: dataFimParsed,
+          turma: { connect: { id: turmaIdParsed } },
           documento: req.file ? req.file.buffer : null,
-          user: { connect: { id: parseInt(userId, 10) } },
+          user: { connect: { id: userIdParsed } },
         },
       });
 
@@ -270,8 +299,12 @@ app.patch(
 );
 
 // Rota de criação de avaliações
-app.post("/api/avaliacoes", async (req, res) => {
+app.post("/api/avaliacoes", upload.single("documento"), async (req, res) => {
   const { titulo, descricao, dataInicio, dataFim, turmaId, userId } = req.body;
+
+  // Converte para número
+  const turmaIdNum = Number(turmaId);
+  const userIdNum = Number(userId);
 
   if (!titulo || !descricao || !dataInicio || !dataFim || !turmaId || !userId) {
     return res
@@ -279,9 +312,8 @@ app.post("/api/avaliacoes", async (req, res) => {
       .json({ message: "Todos os campos são obrigatórios." });
   }
 
-  // Verifica se a turma e o usuário existem
-  const turma = await prisma.turma.findUnique({ where: { id: turmaId } });
-  const usuario = await prisma.user.findUnique({ where: { id: userId } });
+  const turma = await prisma.turma.findUnique({ where: { id: turmaIdNum } });
+  const usuario = await prisma.user.findUnique({ where: { id: userIdNum } });
 
   if (!turma || !usuario) {
     return res
@@ -296,8 +328,8 @@ app.post("/api/avaliacoes", async (req, res) => {
         descricao,
         dataInicio: new Date(dataInicio),
         dataFim: new Date(dataFim),
-        turmaId,
-        userId,
+        turmaId: turmaIdNum,
+        userId: userIdNum,
       },
     });
     return res.status(201).json(avaliacao);
@@ -488,6 +520,31 @@ app.post("/api/diario", async (req, res) => {
   }
 });
 
+// GET /api/diario?turmaId=1&data=2025-04-04
+app.get("/api/diarios", async (req, res) => {
+  const { data } = req.query;
+
+  try {
+    const diarios = await prisma.diario.findMany({
+      where: {
+        userId: req.userId,
+        ...(data && { data: new Date(data) }),
+      },
+      include: {
+        user: true, // você pode incluir o usuário se quiser
+      },
+      orderBy: {
+        data: "desc",
+      },
+    });
+
+    res.status(200).json(diarios);
+  } catch (err) {
+    console.error("Erro ao buscar diários:", err);
+    res.status(500).json({ message: "Erro ao buscar diários." });
+  }
+});
+
 // Rota para criar a turma
 // No backend
 app.post("/api/turmas", async (req, res) => {
@@ -613,36 +670,28 @@ const avaliacoes = await prisma.avaliacao.findMany();
 const diarios = await prisma.diario.findMany();
 
 app.post("/api/turmas/:turmaId/presencas", async (req, res) => {
-  console.log(req.body); // Adicione este log para verificar o que está sendo enviado.
-
   const { presencas } = req.body;
 
   if (!presencas || presencas.length === 0) {
-    return res
-      .status(400)
-      .json({ error: "Dados inválidos. Verifique nome, matéria e userId." });
+    return res.status(400).json({ error: "Lista de presenças vazia." });
   }
 
   try {
-    presencas.forEach((presenca) => {
-      if (
-        !presenca.alunoId ||
-        !presenca.status ||
-        !presenca.data ||
-        !presenca.materia ||
-        !presenca.userId
-      ) {
-        return res
-          .status(400)
-          .json({ error: "Faltam dados obrigatórios em uma das presenças." });
-      }
+    const created = await prisma.presenca.createMany({
+      data: presencas.map((p) => ({
+        alunoId: p.alunoId,
+        status: p.status,
+        data: new Date(p.data),
+        materia: p.materia,
+        userId: p.userId,
+        turmaId: parseInt(req.params.turmaId, 10),
+      })),
     });
 
-    // Inserir a lógica de criação das presenças no banco
-    res.status(200).json({ message: "Presenças registradas com sucesso!" });
+    res.status(201).json({ message: "Presenças registradas!", created });
   } catch (error) {
     console.error("Erro ao registrar presenças:", error);
-    res.status(500).json({ error: "Erro interno do servidor." });
+    res.status(500).json({ error: "Erro ao registrar presenças." });
   }
 });
 
@@ -677,6 +726,227 @@ app.get("/api/turmas/:turmaId/presencas", async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar presenças:", error);
     res.status(500).send({ error: "Erro ao buscar presenças." });
+  }
+});
+
+app.post("/api/chat/criar", async (req, res) => {
+  const { titulo, participantes } = req.body; // participantes = [id1, id2]
+
+  if (!participantes || participantes.length < 2) {
+    return res.status(400).json({ erro: "Informe pelo menos 2 usuários" });
+  }
+
+  try {
+    const novoChat = await prisma.chat.create({
+      data: {
+        titulo,
+        participantes: {
+          create: participantes.map((id) => ({ userId: id })),
+        },
+      },
+      include: {
+        participantes: { include: { user: true } },
+      },
+    });
+
+    res.json(novoChat);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ erro: "Erro ao criar chat" });
+  }
+});
+
+// 🔹 Buscar todos os chats que o usuário participa
+app.get("/api/chat/usuario/:userId", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+
+  try {
+    const chats = await prisma.chat.findMany({
+      where: {
+        participantes: {
+          some: { userId },
+        },
+      },
+      include: {
+        participantes: {
+          include: { user: true },
+        },
+        mensagens: {
+          orderBy: { data: "desc" },
+          take: 1,
+          include: { remetente: true },
+        },
+      },
+    });
+
+    res.json(chats);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ erro: "Erro ao buscar chats" });
+  }
+});
+
+// 🔹 Buscar mensagens de um chat
+app.get("/api/chat/mensagens/:chatId", async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+
+  try {
+    const mensagens = await prisma.mensagem.findMany({
+      where: { chatId },
+      orderBy: { data: "asc" },
+      include: {
+        remetente: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+
+    res.json(mensagens);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ erro: "Erro ao buscar mensagens" });
+  }
+});
+
+// 🔹 Enviar nova mensagem
+app.post("/api/chat/mensagens", async (req, res) => {
+  const { chatId, remetenteId, texto } = req.body;
+
+  try {
+    const novaMensagem = await prisma.mensagem.create({
+      data: {
+        texto,
+        chatId,
+        remetenteId,
+      },
+    });
+
+    res.json(novaMensagem);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ erro: "Erro ao enviar mensagem" });
+  }
+});
+
+// server.js ou routes/chat.js
+
+app.get("/api/chat/usuarios", async (req, res) => {
+  const { tipo } = req.query;
+
+  try {
+    const usuarios = await prisma.user.findMany({
+      where: tipo ? { role: tipo } : {}, // ← todos os usuários se tipo for vazio
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    res.status(200).json(usuarios);
+  } catch (error) {
+    console.error("Erro ao buscar usuários:", error);
+    res.status(500).json({ message: "Erro ao buscar usuários" });
+  }
+});
+app.post("/api/chat/conectar", async (req, res) => {
+  const { user1, user2 } = req.body;
+
+  console.log("Usuários recebidos para o chat:", { user1, user2 });
+
+  if (!user1 || !user2) {
+    return res.status(400).json({ erro: "IDs de usuários são obrigatórios" });
+  }
+
+  try {
+    let chats = await prisma.chat.findMany({
+      where: {
+        participantes: {
+          some: { userId: user1 },
+        },
+      },
+      include: {
+        participantes: true,
+      },
+    });
+
+    let chat = chats.find((c) => {
+      const ids = c.participantes.map((p) => p.userId);
+      return ids.includes(user1) && ids.includes(user2) && ids.length === 2;
+    });
+
+    if (!chat) {
+      chat = await prisma.chat.create({
+        data: {
+          participantes: {
+            create: [
+              { user: { connect: { id: user1 } } },
+              { user: { connect: { id: user2 } } },
+            ],
+          },
+        },
+        include: {
+          participantes: true, // Corrigido aqui!
+        },
+      });
+    }
+
+    res.json({ chatId: chat.id });
+  } catch (error) {
+    console.error("Erro ao conectar chat:", error);
+    res.status(500).json({ erro: "Erro interno" });
+  }
+});
+
+app.get("/api/usuario/me", async (req, res) => {
+  // Exemplo simples, substitua por autenticação real depois
+  const email = req.headers["x-user-email"]; // ou use JWT/autenticação real
+  if (!email) {
+    return res.status(401).json({ error: "Usuário não autenticado" });
+  }
+
+  const usuario = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      nome: true,
+      email: true,
+      _vall: true,
+    },
+  });
+
+  if (!usuario) {
+    return res.status(404).json({ error: "Usuário não encontrado" });
+  }
+
+  res.json(usuario);
+});
+
+app.get("/chat/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const chat = await prisma.chat.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        mensagens: {
+          include: {
+            remetente: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    if (!chat) return res.status(404).json({ error: "Chat não encontrado" });
+
+    res.json({
+      chat: { id: chat.id, titulo: chat.titulo },
+      mensagens: chat.mensagens,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro no servidor" });
   }
 });
 

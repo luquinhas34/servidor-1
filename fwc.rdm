@@ -1,0 +1,139 @@
+import { useParams } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import axios from "axios";
+import EmojiPicker from "emoji-picker-react";
+
+const ChatPage = () => {
+    const { id } = useParams(); // ID do chat na URL
+    const [mensagens, setMensagens] = useState([]);
+    const [novaMensagem, setNovaMensagem] = useState("");
+    const [chatInfo, setChatInfo] = useState(null);const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const scrollRef = useRef(null);
+
+    
+    useEffect(() => {
+        const buscarMensagens = async () => {
+            try {
+                const { data } = await axios.get(`http://localhost:3000/chat/${id}`);
+                setMensagens(data.mensagens);
+                setChatInfo(data.chat);
+            } catch (error) {
+                console.error("Erro ao buscar mensagens:", error);
+            }
+        };
+
+        if (id) buscarMensagens();
+    }, [id]);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [mensagens]);
+
+    const enviarMensagem = async () => {
+        if (!novaMensagem.trim()) return;
+        try {
+            const nova = {
+                texto: novaMensagem,
+                chatId: parseInt(id),
+                remetenteId: 1, // Substituir pelo ID do usuário logado
+            };
+            const { data } = await axios.post("http://localhost:3000/api/chat/mensagens", nova);
+            setMensagens((prev) => [...prev, data]);
+            setNovaMensagem("");
+        } catch (error) {
+            console.error("Erro ao enviar mensagem:", error);
+        }
+    };
+
+
+    const handleEmojiClick = (emojiData) => {
+        setNovaMensagem((prev) => prev + emojiData.emoji);
+    };
+
+    return (
+        <div className="h-screen flex flex-col bg-white">
+            {/* Topo do chat */}
+            <div className="bg-purple-600 p-4 flex items-center justify-between text-white shadow">
+                <div>
+                    <p className="text-sm">Conversa de</p>
+                    <h1 className="text-xl font-bold">{chatInfo?.titulo || "Carregando..."}</h1>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-orange-400 rounded-full flex items-center justify-center font-bold">
+                        A
+                    </div>
+                    <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center font-bold">
+                        J.P
+                    </div>
+                </div>
+            </div>
+
+            {/* Mensagens */}
+            <div
+                ref={scrollRef}
+                className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50"
+            >
+                {mensagens.filter((msg) => msg && msg.remetente)
+                    .map((msg) => {
+
+                        const isUser = msg?.remetente && usuario?.id && msg.remetente.id === usuario.id;
+
+                        return (
+                            <div
+                                key={msg.id}
+                                className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                            >
+                                {!isUser && (
+                                    <div className="w-10 h-10 bg-orange-300 rounded-full mr-2" />
+                                )}
+                                <div
+                                    className={`rounded-lg px-4 py-2 max-w-sm ${isUser
+                                        ? "bg-purple-500 text-white rounded-br-none"
+                                        : "bg-gray-800 text-white rounded-bl-none"
+                                        }`}
+                                >
+                                    <p className="text-sm font-medium">
+                                        {msg.remetente?.nome || "Usuário"}
+                                    </p>
+                                    <p>{msg.texto}</p>
+                                    <p className="text-xs text-right mt-1">10:00</p>
+                                </div>
+                                {isUser && (
+                                    <div className="w-10 h-10 bg-purple-500 rounded-full ml-2" />
+                                )}
+                            </div>
+                        );
+                    })}
+            </div>
+
+            {/* Campo de envio */}
+            <div className="p-4 border-t flex items-center gap-2 relative">
+                <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+                    😊
+                </button>
+                {showEmojiPicker && (
+                    <div className="absolute bottom-16 left-4 z-10">
+                        <EmojiPicker onEmojiClick={handleEmojiClick} />
+                    </div>
+                )}
+                <input
+                    type="text"
+                    value={novaMensagem}
+                    onChange={(e) => setNovaMensagem(e.target.value)}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-1 border border-gray-300 rounded-full px-4 py-2 outline-none"
+                />
+                <button
+                    onClick={enviarMensagem}
+                    className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-full"
+                >
+                    Enviar
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export default ChatPage;
