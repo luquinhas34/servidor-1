@@ -812,12 +812,19 @@ app.get("/api/chat/mensagens/:chatId", async (req, res) => {
 app.post("/api/chat/mensagens", async (req, res) => {
   const { chatId, remetenteId, texto } = req.body;
 
+  if (!chatId || !remetenteId || !texto) {
+    return res.status(400).json({ erro: "Faltando dados obrigatórios" });
+  }
+
   try {
     const novaMensagem = await prisma.mensagem.create({
       data: {
         texto,
         chatId,
         remetenteId,
+      },
+      include: {
+        remetente: true,
       },
     });
 
@@ -827,8 +834,6 @@ app.post("/api/chat/mensagens", async (req, res) => {
     res.status(500).json({ erro: "Erro ao enviar mensagem" });
   }
 });
-
-// server.js ou routes/chat.js
 
 app.get("/api/chat/usuarios", async (req, res) => {
   const { tipo } = req.query;
@@ -850,6 +855,36 @@ app.get("/api/chat/usuarios", async (req, res) => {
     res.status(500).json({ message: "Erro ao buscar usuários" });
   }
 });
+app.get("/api/chat/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Buscar chats onde o usuário participa
+    const chats = await prisma.chat.findMany({
+      where: {
+        participants: {
+          some: {
+            userId: parseInt(userId), // ou outro campo para filtrar os chats do usuário
+          },
+        },
+      },
+      include: {
+        messages: true, // Incluir mensagens associadas a cada chat
+        participants: true, // Incluir participantes do chat
+      },
+    });
+
+    if (!chats || chats.length === 0) {
+      return res.status(404).json({ message: "Nenhuma conversa encontrada." });
+    }
+
+    res.status(200).json(chats);
+  } catch (err) {
+    console.error("Erro ao buscar conversas:", err);
+    res.status(500).json({ message: "Erro ao buscar conversas." });
+  }
+});
+
 app.post("/api/chat/conectar", async (req, res) => {
   const { user1, user2 } = req.body;
 
