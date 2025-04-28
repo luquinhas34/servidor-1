@@ -21,6 +21,8 @@ model User {
   turmas            TurmaUsuario[]
   mensagens         Mensagem[]         @relation("MensagensAutor")
   chatsParticipando ChatParticipante[]
+   responsavelDe     ResponsavelAluno[] @relation("ResponsavelRelacao")
+  responsaveis      ResponsavelAluno[] @relation("AlunoRelacao")
 }
 
 model Turma {
@@ -166,4 +168,23 @@ model Mensagem {
   createdAt  DateTime @default(now())
 }
 
+model ResponsavelAluno {
+  id           Int  @id @default(autoincrement())
+  responsavelId Int
+  alunoId       Int
+
+  responsavel User @relation("ResponsavelRelacao", fields: [responsavelId], references: [id])
+  aluno       User @relation("AlunoRelacao", fields: [alunoId], references: [id])
+
+  @@unique([responsavelId, alunoId])
+}
+
+model Horario {
+  id         Int    @id @default(autoincrement())
+  dia        String
+  turno      String
+  atividade  String
+  horaInicio String
+  horaFim    String
+}
 

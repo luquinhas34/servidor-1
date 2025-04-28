@@ -208,3 +208,9 @@ GET /api/mensagens/:chatId
 - Prisma ORM
 - MySQL
 - Autenticação JWT
+
+## git
+
+git add .
+git commit -m "sua mensagem de commit"
+git push

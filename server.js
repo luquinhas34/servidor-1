@@ -13,6 +13,8 @@ dotenv.config();
 const prisma = new PrismaClient();
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+const horarios = await prisma.horario.findMany();
+
 app.use(cors());
 app.use(express.json());
 
@@ -985,6 +987,49 @@ app.get("/chat/:id", async (req, res) => {
   }
 });
 
+app.get("/api/horarios", async (req, res) => {
+  const horarios = await prisma.horario.findMany();
+  res.json(horarios);
+});
+
+app.post("/api/horarios", async (req, res) => {
+  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
+  const novoHorario = await prisma.horario.create({
+    data: { dia, turno, atividade, horaInicio, horaFim },
+  });
+  res.json(novoHorario);
+});
+
+app.delete("/api/horarios/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const apagado = await prisma.horario.delete({
+      where: { id },
+    });
+    res.json({ success: true, apagado });
+  } catch (error) {
+    res
+      .status(404)
+      .json({ success: false, message: "Horário não encontrado." });
+  }
+});
+
+// PUT /api/horarios/:id
+app.put("/api/horarios/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
+  try {
+    const atualizado = await prisma.horario.update({
+      where: { id },
+      data: { dia, turno, atividade, horaInicio, horaFim },
+    });
+    res.json({ success: true, atualizado });
+  } catch (error) {
+    res
+      .status(404)
+      .json({ success: false, message: "Erro ao atualizar horário." });
+  }
+});
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}!🚀`);
