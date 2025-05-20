@@ -1030,6 +1030,116 @@ app.put("/api/horarios/:id", async (req, res) => {
       .json({ success: false, message: "Erro ao atualizar horário." });
   }
 });
+
+app.post("/api/aluno", async (req, res) => {
+  const {
+    name,
+    email,
+    password,
+    cpf,
+    telefone,
+    dataNascimento,
+    cpfMae,
+    cpfPai,
+  } = req.body;
+
+  if (
+    !name ||
+    !email ||
+    !password ||
+    !cpf ||
+    !telefone ||
+    !dataNascimento ||
+    !cpfMae ||
+    !cpfPai
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Preencha todos os campos obrigatórios." });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const novoAluno = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: "aluno",
+        aluno: {
+          create: {
+            nome: name,
+            cpf,
+            telefone,
+            dataNascimento: new Date(dataNascimento),
+            email,
+            cpfMae,
+            cpfPai,
+            senha: hashedPassword,
+          },
+        },
+      },
+    });
+
+    res
+      .status(201)
+      .json({ message: "Aluno cadastrado com sucesso", aluno: novoAluno });
+  } catch (error) {
+    console.error("Erro ao cadastrar aluno:", error);
+    res.status(500).json({ message: "Erro ao cadastrar aluno." });
+  }
+});
+app.post("/api/prof", async (req, res) => {
+  const { name, email, password, cpf, telefone, dataNascimento, matricula } =
+    req.body;
+
+  if (
+    !name ||
+    !email ||
+    !password ||
+    !cpf ||
+    !telefone ||
+    !dataNascimento ||
+    !matricula
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Preencha todos os campos obrigatórios." });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const novoProf = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: "professor",
+        professor: {
+          create: {
+            name,
+            cpf,
+            telefone,
+            dataNascimento: new Date(dataNascimento),
+            email,
+            matricula,
+            password: hashedPassword,
+          },
+        },
+      },
+    });
+
+    res
+      .status(201)
+      .json({ message: "Professor cadastrado com sucesso", prof: novoProf });
+  } catch (error) {
+    console.error("Erro ao cadastrar Professor:", error);
+    res.status(500).json({ message: "Erro ao cadastrar professor." });
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}!🚀`);
