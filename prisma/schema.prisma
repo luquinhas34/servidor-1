@@ -228,3 +228,27 @@ model Horario {
   horaInicio String
   horaFim    String
 }
+
+model Calendario {
+  id        Int       @id @default(autoincrement())
+  nome      String
+  ano       Int
+  semestre  Int
+  eventos   EventoCalendario[]
+}
+
+model EventoCalendario {
+  id           Int       @id @default(autoincrement())
+  data         DateTime
+  tipo         EventoTipo
+  calendarioId Int
+  calendario   Calendario @relation(fields: [calendarioId], references: [id])
+}
+
+enum EventoTipo {
+  INICIO_BIMESTRE
+  RECESSO
+  SABADO_LETIVO
+  FERIADO
+}
+
