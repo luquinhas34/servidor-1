@@ -8,11 +8,11 @@ datasource db {
 }
 
 model User {
-  id                Int                @id @default(autoincrement())
-  email             String             @unique
-  name              String
-  password          String
-  role              String
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  name     String
+  password String
+  role     String
 
   // Relacionamentos
   avaliacao         Avaliacao[]
@@ -26,12 +26,12 @@ model User {
   responsavelDe     ResponsavelAluno[] @relation("ResponsavelRelacao")
   responsaveis      ResponsavelAluno[] @relation("AlunoRelacao")
   aluno             Aluno?
-    professor Professor?  
+  professor         Professor?
   presencas         Presenca[]         @relation("PresencaAluno")
 }
 
 model Professor {
-    id             Int      @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   name           String
   cpf            String
   telefone       String
@@ -41,11 +41,9 @@ model Professor {
   password       String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  userId         Int      @unique // Adicione a chave única aqui
+  userId         Int      @unique
   user           User     @relation(fields: [userId], references: [id])
 }
-
-
 
 model Aluno {
   id             Int      @id @default(autoincrement())
@@ -59,42 +57,46 @@ model Aluno {
   senha          String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  userId         Int      @unique // Adicione a chave única aqui
+  userId         Int      @unique
   user           User     @relation(fields: [userId], references: [id])
 }
 
 model Turma {
-  id         Int            @id @default(autoincrement())
-  nome       String
-  descricao  String?
-  chamadas   Chamadas[]
-  usuarios   TurmaUsuario[]
-  atividades Atividade[]
-  avaliacoes Avaliacao[]
-  presencas  Presenca[]
-  Diario     Diario[]
+  idt         Int         @id @default(autoincrement())
+  nome        String
+  descricao   String?
+
+  usuarios    TurmaUsuario[]
+  chamadas    Chamadas[]
+  presencas   Presenca[]
+  Diario      Diario[]
+  atividades  Atividade[]
+  avaliacoes  Avaliacao[]
+  horarios    Horario[]
+  calendario  Calendario? @relation("CalendarioDaTurma")
 }
 
+
 model TurmaUsuario {
-  id      Int   @id @default(autoincrement())
-  userId  Int
-  turmaId Int
+  id       Int @id @default(autoincrement())
+  userId   Int // ID do aluno
+  turmaIdt Int // IDT da turma
 
-  turma   Turma @relation(fields: [turmaId], references: [id])
-  user    User  @relation(fields: [userId], references: [id])
+  turma Turma @relation(fields: [turmaIdt], references: [idt])
+  user  User  @relation(fields: [userId], references: [id])
 
-  @@unique([userId, turmaId])
+  @@unique([userId, turmaIdt])
 }
 
 model Chamadas {
-  id        Int        @id @default(autoincrement())
-  data      DateTime   @default(now())
-  nome      String
-  materia   String
-  turmaId   Int
-  userId    Int
+  id       Int      @id @default(autoincrement())
+  data     DateTime @default(now())
+  nome     String
+  materia  String
+  turmaIdt Int
+  userId   Int
 
-  turma     Turma      @relation(fields: [turmaId], references: [id])
+  turma     Turma      @relation(fields: [turmaIdt], references: [idt])
   user      User       @relation(fields: [userId], references: [id])
   presencas Presenca[]
 
@@ -102,30 +104,30 @@ model Chamadas {
 }
 
 model Presenca {
-  id        Int      @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   alunoId   Int
   chamadaId Int
-  turmaId   Int
+  turmaIdt  Int
   status    Status
 
-  turma     Turma      @relation(fields: [turmaId], references: [id])
-  chamada   Chamadas   @relation(fields: [chamadaId], references: [id])
-  Diario    Diario[]
-  aluno     User       @relation("PresencaAluno", fields: [alunoId], references: [id])
+  turma   Turma    @relation(fields: [turmaIdt], references: [idt])
+  chamada Chamadas @relation(fields: [chamadaId], references: [id])
+  Diario  Diario[]
+  aluno   User     @relation("PresencaAluno", fields: [alunoId], references: [id])
 
   @@map("presencas")
 }
 
 model Diario {
-  id        Int       @id @default(autoincrement())
-  alunoId   Int
-  turmaId   Int
-  data      DateTime  @default(now())
-  status    Status
-  userId    Int
+  id       Int      @id @default(autoincrement())
+  alunoId  Int
+  turmaIdt Int
+  data     DateTime @default(now())
+  status   Status
+  userId   Int
 
   user      User       @relation(fields: [userId], references: [id])
-  turma     Turma      @relation(fields: [turmaId], references: [id])
+  turma     Turma      @relation(fields: [turmaIdt], references: [idt])
   presencas Presenca[]
 
   @@map("diarios")
@@ -140,14 +142,15 @@ model Atividade {
   id         Int      @id @default(autoincrement())
   titulo     String
   descricao  String
+  turmaIdt   Int
   dataInicio DateTime
   dataFim    DateTime
-  turmaId    Int
   documento  String?
   userId     Int
+  data       DateTime @default(now())
 
-  turma      Turma    @relation(fields: [turmaId], references: [id])
-  user       User     @relation(fields: [userId], references: [id])
+  turma Turma @relation(fields: [turmaIdt], references: [idt])
+  user  User  @relation(fields: [userId], references: [id])
 }
 
 model Aviso {
@@ -158,7 +161,7 @@ model Aviso {
   updatedAt DateTime @updatedAt
   userId    Int
 
-  user      User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@map("avisos")
 }
@@ -167,34 +170,34 @@ model Avaliacao {
   id         Int      @id @default(autoincrement())
   titulo     String
   descricao  String
-  turmaId    Int
+  turmaIdt   Int
   dataInicio DateTime
   dataFim    DateTime
   documento  String?
   userId     Int
   data       DateTime @default(now())
 
-  turma      Turma    @relation(fields: [turmaId], references: [id])
-  user       User     @relation(fields: [userId], references: [id])
+  turma Turma @relation(fields: [turmaIdt], references: [idt])
+  user  User  @relation(fields: [userId], references: [id])
 
   @@map("avaliacoes")
 }
 
 model Chat {
-  id              Int                @id @default(autoincrement())
-  titulo          String?
-  participantes   ChatParticipante[]
-  mensagens       Mensagem[]
-  updatedAt       DateTime           @updatedAt
+  id            Int                @id @default(autoincrement())
+  titulo        String?
+  participantes ChatParticipante[]
+  mensagens     Mensagem[]
+  updatedAt     DateTime           @updatedAt
 }
 
 model ChatParticipante {
-  id     Int   @id @default(autoincrement())
+  id     Int @id @default(autoincrement())
   userId Int
   chatId Int
 
-  user   User  @relation(fields: [userId], references: [id])
-  chat   Chat  @relation(fields: [chatId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  chat Chat @relation(fields: [chatId], references: [id])
 }
 
 model Mensagem {
@@ -205,40 +208,48 @@ model Mensagem {
   data        DateTime @default(now())
   createdAt   DateTime @default(now())
 
-  remetente   User     @relation("MensagensAutor", fields: [remetenteId], references: [id])
-  chat        Chat     @relation(fields: [chatId], references: [id])
+  remetente User @relation("MensagensAutor", fields: [remetenteId], references: [id])
+  chat      Chat @relation(fields: [chatId], references: [id])
 }
 
 model ResponsavelAluno {
-  id            Int  @id @default(autoincrement())
+  id            Int @id @default(autoincrement())
   responsavelId Int
   alunoId       Int
 
-  responsavel   User @relation("ResponsavelRelacao", fields: [responsavelId], references: [id])
-  aluno         User @relation("AlunoRelacao", fields: [alunoId], references: [id])
+  responsavel User @relation("ResponsavelRelacao", fields: [responsavelId], references: [id])
+  aluno       User @relation("AlunoRelacao", fields: [alunoId], references: [id])
 
   @@unique([responsavelId, alunoId])
 }
 
 model Horario {
-  id         Int    @id @default(autoincrement())
+  id         Int     @id @default(autoincrement())
   dia        String
   turno      String
   atividade  String
   horaInicio String
   horaFim    String
+  turmaId    Int
+  turma      Turma   @relation(fields: [turmaId], references: [idt])
 }
+
+
+
 
 model Calendario {
-  id        Int       @id @default(autoincrement())
-  nome      String
-  ano       Int
-  semestre  Int
-  eventos   EventoCalendario[]
+  id         Int                @id @default(autoincrement())
+  nome       String
+  ano        Int
+  semestre   Int
+  eventos    EventoCalendario[]
+  turma      Turma              @relation("CalendarioDaTurma", fields: [turmaIdt], references: [idt])
+  turmaIdt   Int                @unique
 }
 
+
 model EventoCalendario {
-  id           Int       @id @default(autoincrement())
+  id           Int        @id @default(autoincrement())
   data         DateTime
   tipo         EventoTipo
   calendarioId Int
@@ -251,4 +262,3 @@ enum EventoTipo {
   SABADO_LETIVO
   FERIADO
 }
-

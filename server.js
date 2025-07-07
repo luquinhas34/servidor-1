@@ -139,112 +139,85 @@ app.get("/api/usuarios", async (req, res) => {
     res.status(500).json({ error: "Erro interno do servidor" });
   }
 });
-
+//
+//
+//
+//
+//
+//
+//
+// TUDO SOBRE ATIVIDADES
 // Rota de busca de atividades
-app.get("/api/atividades", async (req, res) => {
+app.post("/api/atividades", upload.single("documento"), async (req, res) => {
+  const { titulo, descricao, dataInicio, dataFim, turmaIdt, userId } = req.body;
+
+  // Converte para número
+  const turmaIdtNum = Number(turmaIdt);
+  const userIdNum = Number(userId);
+
+  if (!titulo || !descricao || !dataInicio || !dataFim || isNaN(turmaIdtNum)) {
+    return res.status(400).json({ error: "Todos os campos são obrigatórios." });
+  }
+
+  const turma = await prisma.turma.findUnique({ where: { idt: turmaIdtNum } });
+  const usuario = await prisma.user.findUnique({ where: { id: userIdNum } });
+
+  if (!turma || !usuario) {
+    return res
+      .status(404)
+      .json({ message: "Turma ou usuário não encontrados." });
+  }
+
   try {
-    const atividades = await prisma.atividade.findMany({
-      include: {
-        turma: true, // se quiser detalhes da turma
-        user: true, // se quiser detalhes do professor
+    const atividade = await prisma.atividade.create({
+      data: {
+        titulo,
+        descricao,
+        dataInicio: new Date(dataInicio),
+        dataFim: new Date(dataFim),
+        turmaIdt: Number(turmaIdtNum),
+        userId: userIdNum,
       },
     });
-    res.json(atividades);
+    return res.status(201).json(atividade);
   } catch (error) {
-    console.error("Erro ao buscar atividades:", error);
+    return res.status(500).json({ message: "Erro ao criar atividade." });
+  }
+});
+app.get("/api/atividades", auth, async (req, res) => {
+  try {
+    const atividades = await prisma.atividade.findMany();
+    res.status(200).json(atividades);
+  } catch (err) {
+    console.error("Erro ao buscar atividades:", err);
     res.status(500).json({ message: "Erro ao buscar atividades." });
   }
 });
-
-app.post(
-  "/api/atividades",
-  auth,
-  upload.single("documento"),
-  async (req, res) => {
-    try {
-      console.log("Dados do corpo da requisição:", req.body);
-      console.log("Arquivo enviado:", req.file);
-
-      const { titulo, descricao, dataInicio, dataFim, turmaId, userId } =
-        req.body;
-
-      // Verificação de campos obrigatórios
-      if (!titulo || !descricao || !turmaId || !userId) {
-        return res
-          .status(400)
-          .json({ message: "Campos obrigatórios ausentes!" });
-      }
-
-      // Convertendo datas de forma segura
-      const dataInicioParsed = isNaN(Date.parse(dataInicio))
-        ? null
-        : new Date(dataInicio);
-      const dataFimParsed = isNaN(Date.parse(dataFim))
-        ? null
-        : new Date(dataFim);
-
-      if (!dataInicioParsed || !dataFimParsed) {
-        return res.status(400).json({ message: "Datas inválidas!" });
-      }
-
-      // Convertendo IDs de forma segura
-      const turmaIdParsed = Number(turmaId);
-      const userIdParsed = Number(userId);
-
-      if (isNaN(turmaIdParsed) || isNaN(userIdParsed)) {
-        return res.status(400).json({ message: "IDs inválidos!" });
-      }
-
-      // Verificar se o usuário existe
-      const userExists = await prisma.user.findUnique({
-        where: { id: userIdParsed },
-      });
-
-      if (!userExists) {
-        return res.status(404).json({ message: "Usuário não encontrado." });
-      }
-
-      // Criar atividade
-      const atividade = await prisma.atividade.create({
-        data: {
-          titulo,
-          descricao,
-          dataInicio: dataInicioParsed,
-          dataFim: dataFimParsed,
-          turma: { connect: { id: turmaIdParsed } },
-          documento: req.file ? req.file.buffer : null,
-          user: { connect: { id: userIdParsed } },
-        },
-      });
-
-      res.status(201).json({
-        message: "Atividade criada com sucesso!",
-        atividade,
-      });
-    } catch (err) {
-      console.error("Erro ao criar atividade:", err);
-      res.status(500).json({ message: "Erro no servidor, tente novamente!" });
-    }
-  }
-);
-
+// Rota de deletação de atividade
 app.delete("/api/atividades/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Verifica se a atividades existe
     const atividadeExistente = await prisma.atividade.findUnique({
       where: { id: parseInt(id, 10) },
     });
+
     if (!atividadeExistente) {
-      return res.status(404).json({ message: "Atividade não encontrada." });
+      return res.status(404).json({ message: "atividade não encontrada." });
     }
 
+    // Deleta a atividade
     await prisma.atividade.delete({ where: { id: parseInt(id, 10) } });
-    res.status(200).json({ message: "Atividade removida com sucesso!" });
+
+    // Resposta de sucesso
+    res.status(200).json({ message: "atividade removida com sucesso!" });
   } catch (err) {
     console.error("Erro ao remover atividade:", err);
     res.status(500).json({ message: "Erro ao remover atividade." });
   }
 });
+
 // Rota de atualização de atividade
 app.patch(
   "/api/atividades/:id",
@@ -264,7 +237,7 @@ app.patch(
         !req.file
       ) {
         return res.status(400).json({
-          message: "Pelo menos um campo deve ser fornecido para atualização.",
+          message: "Pelo menos um  deve ser fornecido para atualização.",
         });
       }
 
@@ -272,7 +245,7 @@ app.patch(
         where: { id: parseInt(id, 10) },
       });
       if (!atividadeExistente) {
-        return res.status(404).json({ message: "Atividade não encontrada." });
+        return res.status(404).json({ message: "atividade não encontrada." });
       }
 
       const atividadeAtualizada = await prisma.atividade.update({
@@ -290,7 +263,7 @@ app.patch(
       });
 
       res.status(200).json({
-        message: "Atividade atualizada com sucesso!",
+        message: "atividade atualizada com sucesso!",
         atividade: atividadeAtualizada,
       });
     } catch (err) {
@@ -299,22 +272,35 @@ app.patch(
     }
   }
 );
-
+//
+//
+//
+//
+//
+//
+//
+// TUDO SOBRE AVALIAÇÕES
 // Rota de criação de avaliações
 app.post("/api/avaliacoes", upload.single("documento"), async (req, res) => {
-  const { titulo, descricao, dataInicio, dataFim, turmaId, userId } = req.body;
+  const { titulo, descricao, dataInicio, dataFim, turmaIdt, userId } = req.body;
 
-  // Converte para número
-  const turmaIdNum = Number(turmaId);
+  const turmaIdtNum = Number(turmaIdt);
   const userIdNum = Number(userId);
 
-  if (!titulo || !descricao || !dataInicio || !dataFim || !turmaId || !userId) {
+  if (
+    !titulo ||
+    !descricao ||
+    !dataInicio ||
+    !dataFim ||
+    isNaN(turmaIdtNum) ||
+    isNaN(userIdNum)
+  ) {
     return res
       .status(400)
-      .json({ message: "Todos os campos são obrigatórios." });
+      .json({ error: "Todos os campos são obrigatórios e válidos." });
   }
 
-  const turma = await prisma.turma.findUnique({ where: { id: turmaIdNum } });
+  const turma = await prisma.turma.findUnique({ where: { idt: turmaIdtNum } });
   const usuario = await prisma.user.findUnique({ where: { id: userIdNum } });
 
   if (!turma || !usuario) {
@@ -330,24 +316,17 @@ app.post("/api/avaliacoes", upload.single("documento"), async (req, res) => {
         descricao,
         dataInicio: new Date(dataInicio),
         dataFim: new Date(dataFim),
-        turmaId: turmaIdNum,
+        turmaIdt: turmaIdtNum,
         userId: userIdNum,
+        documento: req.file?.filename || null, // salvar nome do arquivo se enviado
       },
     });
-    return res.status(201).json(avaliacao);
+    return res
+      .status(201)
+      .json({ message: "Avaliação criada com sucesso!", avaliacao });
   } catch (error) {
+    console.error("Erro ao criar avaliação:", error);
     return res.status(500).json({ message: "Erro ao criar avaliação." });
-  }
-});
-
-// Rota para listar as turmas
-app.get("/api/turmas", async (req, res) => {
-  try {
-    const turmas = await prisma.turma.findMany();
-    res.status(200).json(turmas);
-  } catch (error) {
-    console.error("Erro ao buscar turmas:", error);
-    res.status(500).json({ error: "Erro ao buscar turmas" });
   }
 });
 
@@ -360,7 +339,6 @@ app.get("/api/avaliacoes", auth, async (req, res) => {
     res.status(500).json({ message: "Erro ao buscar avaliações." });
   }
 });
-
 // Rota de deletação de avaliações
 app.delete("/api/avaliacoes/:id", auth, async (req, res) => {
   try {
@@ -440,6 +418,75 @@ app.patch(
     }
   }
 );
+//
+//
+//
+//
+//
+//
+// TUDO SOBRE TURMAS
+// Rota para listar as turmas
+app.get("/api/turmas", async (req, res) => {
+  try {
+    const turmas = await prisma.turma.findMany();
+    res.status(200).json(turmas);
+  } catch (error) {
+    console.error("Erro ao buscar turmas:", error);
+    res.status(500).json({ error: "Erro ao buscar turmas" });
+  }
+});
+app.post("/api/turmas/adicionar-aluno", async (req, res) => {
+  const { userId, turmaIdt } = req.body;
+
+  if (!userId || !turmaIdt) {
+    return res
+      .status(400)
+      .json({ message: "userId e turmaIdt são obrigatórios." });
+  }
+
+  try {
+    const turma = await prisma.turma.findUnique({
+      where: { idt: Number(turmaIdt) },
+    });
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+    });
+
+    if (!turma || !user) {
+      return res
+        .status(404)
+        .json({ message: "Usuário ou turma não encontrados." });
+    }
+
+    // Verifica se já está cadastrado
+    const jaExiste = await prisma.turmaUsuario.findFirst({
+      where: {
+        turmaIdt: Number(turmaIdt),
+        userId: Number(userId),
+      },
+    });
+
+    if (jaExiste) {
+      return res.status(400).json({ message: "Usuário já está na turma." });
+    }
+
+    const relacao = await prisma.turmaUsuario.create({
+      data: {
+        turmaIdt: Number(turmaIdt),
+        userId: Number(userId),
+      },
+    });
+
+    return res
+      .status(201)
+      .json({ message: "Aluno adicionado com sucesso!", relacao });
+  } catch (error) {
+    console.error("Erro ao adicionar aluno à turma:", error);
+    return res
+      .status(500)
+      .json({ message: "Erro ao adicionar aluno à turma." });
+  }
+});
 
 // Rota para criar um aviso
 app.post("/api/avisos", auth, async (req, res) => {
@@ -493,15 +540,193 @@ app.delete("/api/avisos/:id", auth, async (req, res) => {
     res.status(500).json({ message: "Erro ao remover aviso." });
   }
 });
+app.get("/api/chamadas/:turmaIdt", async (req, res) => {
+  const turmaIdt = Number(req.params.turmaIdt);
 
+  if (isNaN(turmaIdt)) {
+    return res.status(400).json({ message: "ID inválido" });
+  }
+
+  try {
+    const chamadas = await prisma.chamadas.findMany({
+      where: { turmaIdt },
+      orderBy: { data: "desc" },
+      select: {
+        id: true,
+        data: true,
+        nome: true,
+        materia: true,
+        user: { select: { id: true, name: true } },
+      },
+    });
+    res.status(200).json(chamadas);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao listar chamadas." });
+  }
+});
+app.post("/api/chamadas", async (req, res) => {
+  console.log("Recebido no /api/chamadas:", req.body);
+
+  let { turmaIdt, userId, data, nome, materia, presencas } = req.body;
+
+  // Conversões e validações básicas
+  turmaIdt = Number(turmaIdt);
+  userId = Number(userId);
+
+  if (isNaN(turmaIdt))
+    return res.status(400).json({ message: "turmaIdt inválido" });
+  if (isNaN(userId))
+    return res.status(400).json({ message: "userId inválido" });
+  if (!data) return res.status(400).json({ message: "Falta campo data" });
+  if (!nome || nome.trim() === "")
+    return res.status(400).json({ message: "Falta campo nome" });
+  if (!Array.isArray(presencas))
+    return res
+      .status(400)
+      .json({ message: "Campo presencas deve ser um array" });
+
+  try {
+    const dataFormatada = new Date(data);
+
+    // Procura chamada no mesmo dia e turma
+    let chamada = await prisma.chamadas.findFirst({
+      where: {
+        turmaIdt,
+        data: dataFormatada,
+      },
+    });
+
+    if (chamada) {
+      // Deleta presenças antigas para atualizar
+      await prisma.presenca.deleteMany({
+        where: { chamadaId: chamada.id },
+      });
+    } else {
+      // Cria nova chamada
+      chamada = await prisma.chamadas.create({
+        data: {
+          turmaIdt,
+          userId,
+          data: dataFormatada,
+          nome: nome.trim(),
+          materia: materia ? materia.trim() : null,
+        },
+      });
+    }
+
+    // Mapeia presenças para salvar no banco
+    const presencasData = presencas.map((p) => ({
+      alunoId: Number(p.alunoId),
+      chamadaId: chamada.id,
+      turmaIdt,
+      status: p.presente ? "PRESENCA" : "FALTA",
+    }));
+
+    await prisma.presenca.createMany({ data: presencasData });
+
+    return res.status(201).json({ message: "Chamada salva com sucesso." });
+  } catch (error) {
+    console.error("Erro no POST /api/chamadas:", error);
+    return res.status(500).json({ message: "Erro interno ao salvar chamada." });
+  }
+});
+
+// GET /api/presencas?turmaIdt=1&data=2025-07-17
+app.get("/api/presencas", async (req, res) => {
+  const { turmaIdt, data } = req.query;
+
+  if (!turmaIdt || !data) {
+    return res
+      .status(400)
+      .json({ message: "Parâmetros turmaIdt e data são obrigatórios." });
+  }
+
+  try {
+    const chamada = await prisma.chamadas.findFirst({
+      where: {
+        turmaIdt: Number(turmaIdt),
+        data: new Date(data),
+      },
+    });
+
+    if (!chamada) {
+      return res.status(200).json([]);
+    }
+
+    const presencas = await prisma.presenca.findMany({
+      where: { chamadaId: chamada.id },
+    });
+
+    res.status(200).json(presencas);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar presenças." });
+  }
+});
+
+app.get("/api/frequencia/turma/:idt", async (req, res) => {
+  const turmaIdt = parseInt(req.params.idt);
+  const mes = req.query.mes; // opcional: ex: "07"
+
+  try {
+    // Buscar alunos da turma
+    const turmaUsuarios = await prisma.turmaUsuario.findMany({
+      where: { turmaIdt },
+      include: { user: true },
+    });
+
+    const alunos = turmaUsuarios.map((tu) => tu.user);
+
+    // Buscar presenças do tipo FALTA, por aluno
+    const faltasPorAluno = await Promise.all(
+      alunos.map(async (aluno) => {
+        const where = {
+          alunoId: aluno.id,
+          turmaIdt,
+          status: "FALTA",
+        };
+
+        if (mes) {
+          // Filtrar pelas chamadas com data dentro do mês
+          const chamadasNoMes = await prisma.chamadas.findMany({
+            where: {
+              turmaIdt,
+              data: {
+                gte: new Date(`2025-${mes}-01T00:00:00.000Z`),
+                lt: new Date(`2025-${mes}-31T23:59:59.999Z`),
+              },
+            },
+            select: { id: true },
+          });
+
+          const chamadasIds = chamadasNoMes.map((c) => c.id);
+          where.chamadaId = { in: chamadasIds };
+        }
+
+        const faltas = await prisma.presenca.count({ where });
+
+        return {
+          nome: aluno.name,
+          faltas,
+        };
+      })
+    );
+
+    res.json(faltasPorAluno);
+  } catch (error) {
+    console.error("Erro ao buscar frequência:", error);
+    res.status(500).json({ error: "Erro ao buscar frequência da turma." });
+  }
+});
 // Rota para salvar o diário de presença
 app.post("/api/diario", async (req, res) => {
-  const { turmaId, presencas } = req.body;
+  const { turmaIdt, presencas } = req.body;
 
   try {
     const diario = await prisma.diario.create({
       data: {
-        turmaId,
+        turmaIdt,
         presencas: {
           create: presencas.map((presenca) => ({
             alunoId: presenca.alunoId,
@@ -522,7 +747,7 @@ app.post("/api/diario", async (req, res) => {
   }
 });
 
-// GET /api/diario?turmaId=1&data=2025-04-04
+// GET /api/diario?turmaIdt=1&data=2025-04-04
 app.get("/api/diarios", async (req, res) => {
   const { data } = req.query;
 
@@ -567,63 +792,15 @@ app.post("/api/turmas", async (req, res) => {
   }
 });
 
-// Rota para associar usuários a uma turma
-// app.post("/api/turmas/:turmaId/usuarios", async (req, res) => {
-//   const userId = req.body.userId; // ID do usuário a ser adicionado
-//   const turmaId = req.params.turmaId; // ID da turma
-
-//   // Verificar se o usuário existe
-//   const userExists = await prisma.user.findUnique({
-//     where: { id: Number(userId) },
-//   });
-
-//   if (!userExists) {
-//     return res.status(404).send({ error: "Usuário não encontrado." });
-//   }
-
-//   // Verificar se a turma existe
-//   const turmaExists = await prisma.turma.findUnique({
-//     where: { id: Number(turmaId) },
-//   });
-
-//   if (!turmaExists) {
-//     return res.status(404).send({ error: "Turma não encontrada." });
-//   }
-
-//   try {
-//     // Busca turmaUsuario com turmaId: turmaId
-
-//     // Se não encontrar, Criar uma nova turmaUsuario com userId=userId e turmaId=turmaId
-
-//     // Tentar adicionar o usuário à turma
-//     await prisma.turma.update({
-//       where: { id: Number(turmaId) },
-//       data: {
-//         usuarios: {
-//           connect: { id: Number(userId) }, // Conecta o usuário à turma
-//         },
-//       },
-//     });
-
-//     // Resposta de sucesso
-//     res.status(200).send("Usuário adicionado à turma com sucesso!");
-//   } catch (error) {
-//     // Erro ao adicionar usuário
-//     console.error("Erro ao adicionar usuário à turma:", error);
-//     res.status(500).send({ error: "Erro ao adicionar usuário à turma." });
-//     throw error;
-//   }
-// });
-
-app.post("/api/turmas/:turmaId/usuarios", async (req, res) => {
+app.post("/api/turmas/:turmaIdt/usuarios", async (req, res) => {
   const userId = Number(req.body.userId);
-  const turmaId = Number(req.params.turmaId);
+  const turmaIdt = Number(req.params.turmaIdt);
 
   try {
     // Verificar se o usuário e a turma existem
     const [userExists, turmaExists] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),
-      prisma.turma.findUnique({ where: { id: turmaId } }),
+      prisma.turma.findUnique({ where: { id: turmaIdt } }),
     ]);
 
     if (!userExists)
@@ -633,7 +810,7 @@ app.post("/api/turmas/:turmaId/usuarios", async (req, res) => {
 
     // Associar o usuário à turma
     await prisma.turma.update({
-      where: { id: turmaId },
+      where: { id: turmaIdt },
       data: {
         usuarios: {
           connect: { id: userId },
@@ -671,7 +848,7 @@ const avaliacoes = await prisma.avaliacao.findMany();
 // Buscar todos os diários
 const diarios = await prisma.diario.findMany();
 
-app.post("/api/turmas/:turmaId/presencas", async (req, res) => {
+app.post("/api/turmas/:turmaIdt/presencas", async (req, res) => {
   const { presencas } = req.body;
 
   if (!presencas || presencas.length === 0) {
@@ -686,7 +863,7 @@ app.post("/api/turmas/:turmaId/presencas", async (req, res) => {
         data: new Date(p.data),
         materia: p.materia,
         userId: p.userId,
-        turmaId: parseInt(req.params.turmaId, 10),
+        turmaIdt: parseInt(req.params.turmaIdt, 10),
       })),
     });
 
@@ -697,12 +874,12 @@ app.post("/api/turmas/:turmaId/presencas", async (req, res) => {
   }
 });
 
-app.get("/api/turmas/:turmaId/usuarios", async (req, res) => {
-  const turmaId = parseInt(req.params.turmaId);
+app.get("/api/turmas/:turmaIdt/usuarios", async (req, res) => {
+  const turmaIdt = parseInt(req.params.turmaIdt);
 
   try {
     const turmaUsuarios = await prisma.turmaUsuario.findMany({
-      where: { turmaId: turmaId },
+      where: { turmaIdt: turmaIdt },
       include: { user: true }, // Inclui os dados do usuário
     });
     res.json(turmaUsuarios.map((turmaUsuario) => turmaUsuario.user)); // Retorna os usuários da turma
@@ -712,12 +889,12 @@ app.get("/api/turmas/:turmaId/usuarios", async (req, res) => {
   }
 });
 
-app.get("/api/turmas/:turmaId/presencas", async (req, res) => {
-  const turmaId = Number(req.params.turmaId);
+app.get("/api/turmas/:turmaIdt/presencas", async (req, res) => {
+  const turmaIdt = Number(req.params.turmaIdt);
 
   try {
     const presencas = await prisma.presenca.findMany({
-      where: { turmaId: turmaId },
+      where: { turmaIdt: turmaIdt },
     });
 
     if (!presencas) {
@@ -1066,7 +1243,7 @@ app.post("/api/aluno", async (req, res) => {
         name,
         email,
         password: hashedPassword,
-        role: "aluno",
+        role: "aluno_vall",
         aluno: {
           create: {
             nome: name,
@@ -1137,6 +1314,118 @@ app.post("/api/prof", async (req, res) => {
   } catch (error) {
     console.error("Erro ao cadastrar Professor:", error);
     res.status(500).json({ message: "Erro ao cadastrar professor." });
+  }
+});
+
+app.post("/api/turmas/adicionar-aluno", async (req, res) => {
+  const { userId, turmaIdt } = req.body;
+
+  if (!userId || !turmaIdt) {
+    return res
+      .status(400)
+      .json({ message: "userId e turmaIdt são obrigatórios." });
+  }
+
+  const userIdNum = Number(userId);
+  const turmaIdtNum = Number(turmaIdt);
+
+  try {
+    const turma = await prisma.turma.findUnique({
+      where: { idt: turmaIdtNum },
+    });
+    const usuario = await prisma.user.findUnique({ where: { id: userIdNum } });
+
+    if (!turma || !usuario) {
+      return res
+        .status(404)
+        .json({ message: "Usuário ou turma não encontrados." });
+    }
+
+    // Verifica se já está na turma
+    const relacaoExistente = await prisma.turmaUsuario.findUnique({
+      where: {
+        turmaIdt_userId: {
+          turmaIdt: turmaIdtNum,
+          userId: userIdNum,
+        },
+      },
+    });
+
+    if (relacaoExistente) {
+      return res.status(200).json({ message: "Usuário já está na turma." });
+    }
+
+    // Cria a relação
+    const relacao = await prisma.turmaUsuario.create({
+      data: {
+        turmaIdt: turmaIdtNum,
+        userId: userIdNum,
+      },
+    });
+
+    return res
+      .status(201)
+      .json({ message: "Aluno adicionado com sucesso!", relacao });
+  } catch (error) {
+    console.error("Erro ao adicionar aluno à turma:", error);
+    return res.status(500).json({ message: "Erro interno do servidor." });
+  }
+});
+app.get("/api/turmas/:idt/alunos", async (req, res) => {
+  const idt = Number(req.params.idt);
+
+  if (isNaN(idt)) {
+    return res.status(400).json({ message: "IDT inválido" });
+  }
+
+  try {
+    const alunosDaTurma = await prisma.turmaUsuario.findMany({
+      where: { turmaIdt: idt },
+      include: {
+        user: true,
+      },
+    });
+
+    // Filtra manualmente os alunos com role "aluno"
+    const alunos = alunosDaTurma
+      .filter((tu) => tu.user.role === "aluno_vall")
+      .map((tu) => ({
+        id: tu.user.id,
+        nome: tu.user.name,
+        email: tu.user.email,
+      }));
+
+    res.status(200).json(alunos);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar alunos da turma." });
+  }
+});
+app.delete("/api/turmas/:turmaIdt/alunos/:userId", async (req, res) => {
+  const turmaIdt = Number(req.params.turmaIdt);
+  const userId = Number(req.params.userId);
+
+  try {
+    await prisma.turmaUsuario.deleteMany({
+      where: {
+        turmaIdt,
+        userId,
+      },
+    });
+
+    res.status(200).json({ message: "Aluno removido da turma com sucesso." });
+  } catch (error) {
+    console.error("Erro ao remover aluno:", error);
+    res.status(500).json({ message: "Erro ao remover aluno da turma." });
+  }
+});
+app.get("/api/users", async (req, res) => {
+  try {
+    const users = await prisma.user.findMany();
+    res.json(users);
+  } catch (error) {
+    console.error("Erro ao buscar usuários:", error);
+    res.status(500).json({ message: "Erro ao buscar usuários." });
   }
 });
 
