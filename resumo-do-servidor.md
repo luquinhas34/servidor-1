@@ -154,7 +154,7 @@ POST /api/turmas/:turmaId/presencas
 ### Listar presenças da turma
 
 ```http
-GET /api/turmas/:turmaId/presencas
+GET /api/turmas/:/presencas
 ```
 
 ---

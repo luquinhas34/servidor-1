@@ -6,6 +6,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import auth from "./middlewares/auth.js";
 import multer from "multer";
+
 const app = express();
 
 dotenv.config();
@@ -1429,6 +1430,78 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+// Rotas horario
+// Rotas horário
+
+// GET /api/horarios/turma/:turmaId
+app.get("/api/horarios/turma/:turmaId", async (req, res) => {
+  const { turmaId } = req.params;
+  try {
+    const horarios = await prisma.horario.findMany({
+      where: { turmaId: parseInt(turmaId) },
+    });
+    res.json(horarios);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao buscar horários" });
+  }
+});
+app.post("/api/horarios", async (req, res) => {
+  const { dia, turno, atividade, horaInicio, horaFim, turmaId } = req.body;
+
+  try {
+    const novoHorario = await prisma.horario.create({
+      data: {
+        dia,
+        turno,
+        atividade,
+        horaInicio,
+        horaFim,
+        turmaId: Number(turmaId), // Use o campo direto da FK aqui
+      },
+    });
+
+    res.status(201).json(novoHorario);
+  } catch (error) {
+    console.error("Erro ao criar horário:", error);
+    res.status(500).json({ error: "Erro ao criar horário" });
+  }
+});
+
+// PUT /api/horarios/:id
+app.put("/api/horarios/:id", async (req, res) => {
+  const { id } = req.params;
+  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
+  try {
+    const horarioAtualizado = await prisma.horario.update({
+      where: { id: parseInt(id) },
+      data: {
+        dia,
+        turno,
+        atividade,
+        horaInicio,
+        horaFim,
+      },
+    });
+    res.json(horarioAtualizado);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao atualizar horário" });
+  }
+});
+
+// DELETE /api/horarios/:id
+app.delete("/api/horarios/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.horario.delete({
+      where: { id: parseInt(id) },
+    });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao excluir horário" });
+  }
+});
+
+// Inicializa o servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}!🚀`);
