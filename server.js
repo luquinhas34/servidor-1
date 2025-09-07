@@ -78,36 +78,50 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    // Validação básica
+    if (!email?.trim() || !password?.trim()) {
       return res
         .status(400)
         .json({ message: "Email e senha são obrigatórios." });
     }
 
+    // Verifica se o usuário existe
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(400).json({ message: "Credenciais inválidas" });
+      return res.status(400).json({ message: "Credenciais inválidas." });
     }
 
+    // Confere a senha (no schema pode ser passwordHash ou outro campo)
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      return res.status(400).json({ message: "Credenciais inválidas" });
+      return res.status(400).json({ message: "Credenciais inválidas." });
     }
 
+    // Gera o token JWT
     const token = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || "dev_secret",
       { expiresIn: "7d" }
     );
+
+    // Remove a senha antes de enviar ao cliente
+    const { password: _, ...userSafe } = user;
 
     res.status(200).json({
       message: "Login realizado com sucesso!",
       token,
-      role: user.role,
+      user: {
+        id: userSafe.id,
+        nome: userSafe.nome ?? userSafe.name,
+        email: userSafe.email,
+        role: userSafe.role,
+      },
     });
   } catch (err) {
-    console.error("Erro no servidor:", err);
-    res.status(500).json({ message: "Erro no servidor, tente novamente!" });
+    console.error("Erro no servidor (login):", err);
+    res
+      .status(500)
+      .json({ message: "Erro no servidor, tente novamente mais tarde." });
   }
 });
 // Protege as rotas abaixo com o middleware de autenticação
@@ -1165,50 +1179,6 @@ app.get("/chat/:id", async (req, res) => {
   }
 });
 
-app.get("/api/horarios", async (req, res) => {
-  const horarios = await prisma.horario.findMany();
-  res.json(horarios);
-});
-
-app.post("/api/horarios", async (req, res) => {
-  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
-  const novoHorario = await prisma.horario.create({
-    data: { dia, turno, atividade, horaInicio, horaFim },
-  });
-  res.json(novoHorario);
-});
-
-app.delete("/api/horarios/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  try {
-    const apagado = await prisma.horario.delete({
-      where: { id },
-    });
-    res.json({ success: true, apagado });
-  } catch (error) {
-    res
-      .status(404)
-      .json({ success: false, message: "Horário não encontrado." });
-  }
-});
-
-// PUT /api/horarios/:id
-app.put("/api/horarios/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
-  try {
-    const atualizado = await prisma.horario.update({
-      where: { id },
-      data: { dia, turno, atividade, horaInicio, horaFim },
-    });
-    res.json({ success: true, atualizado });
-  } catch (error) {
-    res
-      .status(404)
-      .json({ success: false, message: "Erro ao atualizar horário." });
-  }
-});
-
 app.post("/api/aluno", async (req, res) => {
   const {
     name,
@@ -1431,73 +1401,257 @@ app.get("/api/users", async (req, res) => {
 });
 
 // Rotas horario
-// Rotas horário
-
-// GET /api/horarios/turma/:turmaId
-app.get("/api/horarios/turma/:turmaId", async (req, res) => {
-  const { turmaId } = req.params;
+// POST /api/horarios/multiplos
+app.post("/api/horarios/multiplos", async (req, res) => {
   try {
-    const horarios = await prisma.horario.findMany({
-      where: { turmaId: parseInt(turmaId) },
+    const horarios = req.body; // espera um array de objetos {dia, turno, atividade, horaInicio, horaFim, turmaId}
+
+    // Validação básica
+    if (!Array.isArray(horarios) || horarios.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Envie um array de horários válido" });
+    }
+
+    for (const h of horarios) {
+      if (
+        !h.dia ||
+        !h.turno ||
+        !h.atividade ||
+        !h.horaInicio ||
+        !h.horaFim ||
+        !h.turmaId
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Todos os campos devem ser preenchidos" });
+      }
+    }
+
+    // Criação múltipla usando createMany
+    const created = await prisma.horario.createMany({
+      data: horarios.map((h) => ({
+        dia: h.dia,
+        turno: h.turno,
+        atividade: h.atividade,
+        horaInicio: h.horaInicio,
+        horaFim: h.horaFim,
+        turmaId: Number(h.turmaId),
+      })),
+      skipDuplicates: true, // evita duplicados se necessário
     });
-    res.json(horarios);
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar horários" });
+
+    res.json({ message: `${created.count} horários adicionados com sucesso!` });
+  } catch (err) {
+    console.error("Erro ao adicionar múltiplos horários:", err);
+    res.status(500).json({ error: "Erro ao adicionar horários" });
   }
 });
-app.post("/api/horarios", async (req, res) => {
-  const { dia, turno, atividade, horaInicio, horaFim, turmaId } = req.body;
 
+// Rotas horário
+// ==========================
+// 📌 ROTAS DE HORÁRIOS
+// ==========================
+
+// Criar horário
+app.post("/api/horarios", async (req, res) => {
   try {
-    const novoHorario = await prisma.horario.create({
+    const { dia, turno, atividade, horaInicio, horaFim, turmaIdt } = req.body;
+
+    if (!dia || !turno || !atividade || !horaInicio || !horaFim || !turmaIdt) {
+      return res
+        .status(400)
+        .json({ message: "Todos os campos são obrigatórios." });
+    }
+
+    const horario = await prisma.horario.create({
       data: {
         dia,
         turno,
         atividade,
-        horaInicio,
-        horaFim,
-        turmaId: Number(turmaId), // Use o campo direto da FK aqui
+        horaInicio: new Date(horaInicio),
+        horaFim: new Date(horaFim),
+        turmaIdt: Number(turmaIdt),
       },
     });
 
-    res.status(201).json(novoHorario);
+    res.status(201).json({ message: "Horário criado com sucesso!", horario });
   } catch (error) {
     console.error("Erro ao criar horário:", error);
-    res.status(500).json({ error: "Erro ao criar horário" });
+    res.status(500).json({ message: "Erro ao criar horário." });
   }
 });
 
-// PUT /api/horarios/:id
-app.put("/api/horarios/:id", async (req, res) => {
-  const { id } = req.params;
-  const { dia, turno, atividade, horaInicio, horaFim } = req.body;
+// Listar todos os horários
+app.get("/api/horarios", async (req, res) => {
   try {
+    const horarios = await prisma.horario.findMany({
+      include: { turma: true },
+      orderBy: { dia: "asc" },
+    });
+    res.status(200).json(horarios);
+  } catch (error) {
+    console.error("Erro ao buscar horários:", error);
+    res.status(500).json({ message: "Erro ao buscar horários." });
+  }
+});
+
+// Buscar horários por turma
+app.get("/api/horarios/turma/:turmaIdt", async (req, res) => {
+  try {
+    const turmaIdt = Number(req.params.turmaIdt);
+    const horarios = await prisma.horario.findMany({
+      where: { turmaIdt },
+      orderBy: [{ dia: "asc" }, { horaInicio: "asc" }],
+    });
+    res.status(200).json(horarios);
+  } catch (error) {
+    console.error("Erro ao buscar horários da turma:", error);
+    res.status(500).json({ message: "Erro ao buscar horários da turma." });
+  }
+});
+
+// Atualizar horário
+app.patch("/api/horarios/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dia, turno, atividade, horaInicio, horaFim, turmaIdt } = req.body;
+
+    const horarioExistente = await prisma.horario.findUnique({
+      where: { id: parseInt(id, 10) },
+    });
+
+    if (!horarioExistente) {
+      return res.status(404).json({ message: "Horário não encontrado." });
+    }
+
     const horarioAtualizado = await prisma.horario.update({
-      where: { id: parseInt(id) },
+      where: { id: parseInt(id, 10) },
       data: {
-        dia,
-        turno,
-        atividade,
-        horaInicio,
-        horaFim,
+        dia: dia || horarioExistente.dia,
+        turno: turno || horarioExistente.turno,
+        atividade: atividade || horarioExistente.atividade,
+        horaInicio: horaInicio
+          ? new Date(horaInicio)
+          : horarioExistente.horaInicio,
+        horaFim: horaFim ? new Date(horaFim) : horarioExistente.horaFim,
+        turmaIdt: turmaIdt ? Number(turmaIdt) : horarioExistente.turmaIdt,
       },
     });
-    res.json(horarioAtualizado);
+
+    res
+      .status(200)
+      .json({ message: "Horário atualizado com sucesso!", horarioAtualizado });
   } catch (error) {
-    res.status(500).json({ error: "Erro ao atualizar horário" });
+    console.error("Erro ao atualizar horário:", error);
+    res.status(500).json({ message: "Erro ao atualizar horário." });
   }
 });
 
-// DELETE /api/horarios/:id
+// Deletar horário
 app.delete("/api/horarios/:id", async (req, res) => {
-  const { id } = req.params;
   try {
-    await prisma.horario.delete({
-      where: { id: parseInt(id) },
+    const { id } = req.params;
+
+    const horarioExistente = await prisma.horario.findUnique({
+      where: { id: parseInt(id, 10) },
     });
-    res.status(204).send();
+
+    if (!horarioExistente) {
+      return res.status(404).json({ message: "Horário não encontrado." });
+    }
+
+    await prisma.horario.delete({ where: { id: parseInt(id, 10) } });
+
+    res.status(200).json({ message: "Horário removido com sucesso!" });
   } catch (error) {
-    res.status(500).json({ error: "Erro ao excluir horário" });
+    console.error("Erro ao remover horário:", error);
+    res.status(500).json({ message: "Erro ao remover horário." });
+  }
+});
+// ==========================
+// 📌 ROTAS DE MATÉRIAS
+// ==========================
+
+// Listar todas
+app.get("/api/materias", async (req, res) => {
+  try {
+    const materias = await prisma.materia.findMany();
+    res.json(materias);
+  } catch (err) {
+    console.error("Erro ao buscar matérias:", err);
+    res.status(500).json({ message: "Erro ao buscar matérias." });
+  }
+});
+
+// Criar nova matéria
+app.post("/api/materias", async (req, res) => {
+  try {
+    const { nome } = req.body;
+    if (!nome) return res.status(400).json({ message: "Nome é obrigatório." });
+
+    const materia = await prisma.materia.create({
+      data: { nome },
+    });
+
+    res.status(201).json(materia);
+  } catch (err) {
+    console.error("Erro ao criar matéria:", err);
+    res.status(500).json({ message: "Erro ao criar matéria." });
+  }
+});
+// Criar múltiplos horários de uma vez
+// Criar múltiplos horários de uma vez
+// Criar múltiplos horários de uma vez
+app.post("/api/horarios/multiplos", async (req, res) => {
+  try {
+    const horarios = req.body;
+    console.log("Payload recebido:", horarios);
+
+    if (!Array.isArray(horarios) || horarios.length === 0) {
+      return res.status(400).json({ message: "Nenhum horário enviado." });
+    }
+
+    const resultados = [];
+
+    for (const h of horarios) {
+      const { dia, turno, horaInicio, horaFim, turmaIdt, materiaId } = h;
+
+      if (
+        !dia ||
+        !turno ||
+        !horaInicio ||
+        !horaFim ||
+        !turmaIdt ||
+        isNaN(turmaIdt)
+      ) {
+        console.log("Horário inválido:", h);
+        return res.status(400).json({
+          message:
+            "Todos os campos obrigatórios precisam estar preenchidos corretamente.",
+        });
+      }
+
+      const horarioCriado = await prisma.horario.create({
+        data: {
+          dia,
+          turno,
+          horaInicio,
+          horaFim,
+          turmaIdt: Number(turmaIdt),
+          materiaId: materiaId ? Number(materiaId) : null,
+        },
+      });
+
+      resultados.push(horarioCriado);
+    }
+
+    res
+      .status(201)
+      .json({ message: "Horários criados com sucesso!", resultados });
+  } catch (err) {
+    console.error("Erro ao criar múltiplos horários:", err);
+    res.status(500).json({ message: "Erro ao criar múltiplos horários." });
   }
 });
 
