@@ -18,6 +18,49 @@ const horarios = await prisma.horario.findMany();
 
 app.use(cors());
 app.use(express.json());
+async function inicializarDados() {
+  try {
+    // --- Criar turmas se não existirem ---
+    const turmasExistentes = await prisma.turma.findMany();
+    if (turmasExistentes.length === 0) {
+      await prisma.turma.createMany({
+        data: [
+          { nome: "1º Ano A" },
+          { nome: "1º Ano B" },
+          { nome: "2º Ano A" },
+          { nome: "2º Ano B" },
+        ],
+      });
+      console.log("Turmas criadas com sucesso!");
+    } else {
+      console.log("Turmas já existem.");
+    }
+
+    // --- Criar matérias se não existirem ---
+    const materiasExistentes = await prisma.materia.findMany();
+    if (materiasExistentes.length === 0) {
+      await prisma.materia.createMany({
+        data: [
+          { nome: "Matemática" },
+          { nome: "Português" },
+          { nome: "Ciências" },
+          { nome: "História" },
+          { nome: "Geografia" },
+          { nome: "Inglês" },
+          { nome: "Educação Física" },
+        ],
+      });
+      console.log("Matérias criadas com sucesso!");
+    } else {
+      console.log("Matérias já existem.");
+    }
+  } catch (err) {
+    console.error("Erro ao inicializar dados:", err);
+  }
+}
+
+// Chamar função de inicialização depois que o Prisma estiver conectado
+inicializarDados();
 
 // Conectar ao banco de dados
 async function connectDatabase() {
@@ -1448,213 +1491,179 @@ app.post("/api/horarios/multiplos", async (req, res) => {
   }
 });
 
-// Rotas horário
-// ==========================
-// 📌 ROTAS DE HORÁRIOS
-// ==========================
+// -------------------- ROTAS HORÁRIO --------------------
 
-// Criar horário
-app.post("/api/horarios", async (req, res) => {
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+// --- GET /api/turmas
+app.get("/api/turmas", async (req, res) => {
   try {
-    const { dia, turno, atividade, horaInicio, horaFim, turmaIdt } = req.body;
-
-    if (!dia || !turno || !atividade || !horaInicio || !horaFim || !turmaIdt) {
-      return res
-        .status(400)
-        .json({ message: "Todos os campos são obrigatórios." });
-    }
-
-    const horario = await prisma.horario.create({
-      data: {
-        dia,
-        turno,
-        atividade,
-        horaInicio: new Date(horaInicio),
-        horaFim: new Date(horaFim),
-        turmaIdt: Number(turmaIdt),
+    // Seu modelo Turma usa idt como PK
+    const turmas = await prisma.turma.findMany({
+      select: {
+        idt: true,
+        nome: true,
       },
+      orderBy: { nome: "asc" },
     });
 
-    res.status(201).json({ message: "Horário criado com sucesso!", horario });
+    // O frontend espera {id, nome}? Seu select traz idt. Normalizamos para id.
+    const resultado = turmas.map((t) => ({ id: t.idt, nome: t.nome }));
+    res.json(resultado);
   } catch (error) {
-    console.error("Erro ao criar horário:", error);
-    res.status(500).json({ message: "Erro ao criar horário." });
+    console.error("Erro GET /api/turmas:", error);
+    res.status(500).json({ error: "Erro ao buscar turmas" });
   }
 });
 
-// Listar todos os horários
+// --- GET /api/materia/listar
+app.get("/api/materia/listar", async (req, res) => {
+  try {
+    const materias = await prisma.materia.findMany({
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    });
+    res.json(materias);
+  } catch (error) {
+    console.error("Erro GET /api/materia/listar:", error);
+    res.status(500).json({ error: "Erro ao buscar matérias" });
+  }
+});
+
+// --- POST /api/horario/multiplos
+// Espera um array com objetos: { dia, turno, horaInicio, horaFim, turmaId, materiaId }
+app.post("/api/horario/multiplos", async (req, res) => {
+  const payload = req.body;
+
+  if (!Array.isArray(payload) || payload.length === 0) {
+    return res
+      .status(400)
+      .json({ error: "Payload deve ser um array de horários" });
+  }
+
+  // validação básica dos campos
+  for (let i = 0; i < payload.length; i++) {
+    const h = payload[i];
+    if (!h.dia || !h.turno || !h.horaInicio || !h.horaFim || !h.turmaId) {
+      return res.status(400).json({
+        error: `Item ${i} inválido. Campos obrigatórios: dia, turno, horaInicio, horaFim, turmaId`,
+      });
+    }
+  }
+
+  try {
+    // checar se a turma existe (usando idt)
+    const turmaId = payload[0].turmaId;
+    const turma = await prisma.turma.findUnique({ where: { idt: turmaId } });
+    if (!turma) {
+      return res
+        .status(400)
+        .json({ error: `Turma com idt=${turmaId} não encontrada` });
+    }
+
+    // opcional: verificar matérias referenciadas (se forem não nulas)
+    const materiaIds = Array.from(
+      new Set(
+        payload
+          .map((p) => (p.materiaId ? Number(p.materiaId) : null))
+          .filter(Boolean)
+      )
+    );
+    if (materiaIds.length > 0) {
+      const materiasExistentes = await prisma.materia.findMany({
+        where: { id: { in: materiaIds } },
+        select: { id: true },
+      });
+      const existentesSet = new Set(materiasExistentes.map((m) => m.id));
+      const faltantes = materiaIds.filter((id) => !existentesSet.has(id));
+      if (faltantes.length > 0) {
+        return res
+          .status(400)
+          .json({ error: `Matérias não encontradas: ${faltantes.join(", ")}` });
+      }
+    }
+
+    // Normalizar dados: transformar materiaId null/undefined em null
+    const dadosParaCriar = payload.map((p) => ({
+      dia: p.dia,
+      turno: p.turno,
+      horaInicio: p.horaInicio,
+      horaFim: p.horaFim,
+      turmaId: Number(p.turmaId),
+      materiaId: p.materiaId ? Number(p.materiaId) : null,
+    }));
+
+    // Usar createMany (se quiser saber quais foram criados, usar create em loop)
+    const created = await prisma.horario.createMany({
+      data: dadosParaCriar,
+      skipDuplicates: true,
+    });
+
+    res.json({
+      message: "Horários inseridos",
+      insertedCount: created.count ?? null,
+    });
+  } catch (error) {
+    console.error("Erro POST /api/horario/multiplos:", error);
+    res.status(500).json({ error: "Erro ao inserir horários" });
+  }
+});
 app.get("/api/horarios", async (req, res) => {
   try {
     const horarios = await prisma.horario.findMany({
-      include: { turma: true },
+      include: {
+        turma: true,
+        materia: true,
+      },
       orderBy: { dia: "asc" },
     });
-    res.status(200).json(horarios);
+    res.json(horarios);
   } catch (error) {
-    console.error("Erro ao buscar horários:", error);
-    res.status(500).json({ message: "Erro ao buscar horários." });
+    console.error("Erro GET /api/horarios:", error);
+    res.status(500).json({ error: "Erro ao buscar horários" });
   }
 });
 
-// Buscar horários por turma
-app.get("/api/horarios/turma/:turmaIdt", async (req, res) => {
+// --- GET /api/horarios/turma/:idt
+// Lista horários de uma turma específica
+app.get("/api/horarios/turma/:idt", async (req, res) => {
+  const { idt } = req.params;
+
   try {
-    const turmaIdt = Number(req.params.turmaIdt);
     const horarios = await prisma.horario.findMany({
-      where: { turmaIdt },
-      orderBy: [{ dia: "asc" }, { horaInicio: "asc" }],
+      where: { turmaId: Number(idt) },
+      include: { materia: true },
+      orderBy: { dia: "asc" },
     });
-    res.status(200).json(horarios);
+
+    res.json(horarios);
   } catch (error) {
-    console.error("Erro ao buscar horários da turma:", error);
-    res.status(500).json({ message: "Erro ao buscar horários da turma." });
+    console.error("Erro GET /api/horarios/turma/:idt:", error);
+    res.status(500).json({ error: "Erro ao buscar horários da turma" });
   }
 });
 
-// Atualizar horário
-app.patch("/api/horarios/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dia, turno, atividade, horaInicio, horaFim, turmaIdt } = req.body;
+// --- GET /api/horarios/:id
+// Busca um horário específico por ID
+app.get("/api/horarios/:id", async (req, res) => {
+  const { id } = req.params;
 
-    const horarioExistente = await prisma.horario.findUnique({
-      where: { id: parseInt(id, 10) },
+  try {
+    const horario = await prisma.horario.findUnique({
+      where: { id: Number(id) },
+      include: { turma: true, materia: true },
     });
 
-    if (!horarioExistente) {
-      return res.status(404).json({ message: "Horário não encontrado." });
+    if (!horario) {
+      return res.status(404).json({ error: "Horário não encontrado" });
     }
 
-    const horarioAtualizado = await prisma.horario.update({
-      where: { id: parseInt(id, 10) },
-      data: {
-        dia: dia || horarioExistente.dia,
-        turno: turno || horarioExistente.turno,
-        atividade: atividade || horarioExistente.atividade,
-        horaInicio: horaInicio
-          ? new Date(horaInicio)
-          : horarioExistente.horaInicio,
-        horaFim: horaFim ? new Date(horaFim) : horarioExistente.horaFim,
-        turmaIdt: turmaIdt ? Number(turmaIdt) : horarioExistente.turmaIdt,
-      },
-    });
-
-    res
-      .status(200)
-      .json({ message: "Horário atualizado com sucesso!", horarioAtualizado });
+    res.json(horario);
   } catch (error) {
-    console.error("Erro ao atualizar horário:", error);
-    res.status(500).json({ message: "Erro ao atualizar horário." });
+    console.error("Erro GET /api/horarios/:id:", error);
+    res.status(500).json({ error: "Erro ao buscar horário" });
   }
 });
-
-// Deletar horário
-app.delete("/api/horarios/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const horarioExistente = await prisma.horario.findUnique({
-      where: { id: parseInt(id, 10) },
-    });
-
-    if (!horarioExistente) {
-      return res.status(404).json({ message: "Horário não encontrado." });
-    }
-
-    await prisma.horario.delete({ where: { id: parseInt(id, 10) } });
-
-    res.status(200).json({ message: "Horário removido com sucesso!" });
-  } catch (error) {
-    console.error("Erro ao remover horário:", error);
-    res.status(500).json({ message: "Erro ao remover horário." });
-  }
-});
-// ==========================
-// 📌 ROTAS DE MATÉRIAS
-// ==========================
-
-// Listar todas
-app.get("/api/materias", async (req, res) => {
-  try {
-    const materias = await prisma.materia.findMany();
-    res.json(materias);
-  } catch (err) {
-    console.error("Erro ao buscar matérias:", err);
-    res.status(500).json({ message: "Erro ao buscar matérias." });
-  }
-});
-
-// Criar nova matéria
-app.post("/api/materias", async (req, res) => {
-  try {
-    const { nome } = req.body;
-    if (!nome) return res.status(400).json({ message: "Nome é obrigatório." });
-
-    const materia = await prisma.materia.create({
-      data: { nome },
-    });
-
-    res.status(201).json(materia);
-  } catch (err) {
-    console.error("Erro ao criar matéria:", err);
-    res.status(500).json({ message: "Erro ao criar matéria." });
-  }
-});
-// Criar múltiplos horários de uma vez
-// Criar múltiplos horários de uma vez
-// Criar múltiplos horários de uma vez
-app.post("/api/horarios/multiplos", async (req, res) => {
-  try {
-    const horarios = req.body;
-    console.log("Payload recebido:", horarios);
-
-    if (!Array.isArray(horarios) || horarios.length === 0) {
-      return res.status(400).json({ message: "Nenhum horário enviado." });
-    }
-
-    const resultados = [];
-
-    for (const h of horarios) {
-      const { dia, turno, horaInicio, horaFim, turmaIdt, materiaId } = h;
-
-      if (
-        !dia ||
-        !turno ||
-        !horaInicio ||
-        !horaFim ||
-        !turmaIdt ||
-        isNaN(turmaIdt)
-      ) {
-        console.log("Horário inválido:", h);
-        return res.status(400).json({
-          message:
-            "Todos os campos obrigatórios precisam estar preenchidos corretamente.",
-        });
-      }
-
-      const horarioCriado = await prisma.horario.create({
-        data: {
-          dia,
-          turno,
-          horaInicio,
-          horaFim,
-          turmaIdt: Number(turmaIdt),
-          materiaId: materiaId ? Number(materiaId) : null,
-        },
-      });
-
-      resultados.push(horarioCriado);
-    }
-
-    res
-      .status(201)
-      .json({ message: "Horários criados com sucesso!", resultados });
-  } catch (err) {
-    console.error("Erro ao criar múltiplos horários:", err);
-    res.status(500).json({ message: "Erro ao criar múltiplos horários." });
-  }
-});
-
 // Inicializa o servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

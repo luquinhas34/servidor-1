@@ -110,8 +110,8 @@ model TurmaMateria {
   turmaId   Int
   materiaId Int
 
-  turma   Turma   @relation("Turma_TurmaMateria", fields: [turmaId], references: [idt])
-  
+  turma Turma @relation("Turma_TurmaMateria", fields: [turmaId], references: [idt])
+
   @@unique([turmaId, materiaId])
 }
 
@@ -119,16 +119,17 @@ model TurmaMateria {
  * -------------------- Horários --------------------
  */
 model Horario {
-  id        Int       @id @default(autoincrement())
-  dia       String
-  turno     String
+  id         Int      @id @default(autoincrement())
+  dia        String
+  turno      String
   horaInicio String
   horaFim    String
-  turmaIdt   Int
-  turma      Turma    @relation(fields: [turmaIdt], references: [idt])
+  turmaId    Int
+  materiaId  Int?      // opcional
 
-  materiaId  Int?
-  materia    Materia? @relation(fields: [materiaId], references: [id])
+  // Relações
+  turma      Turma     @relation(fields: [turmaId], references: [idt])
+  materia    Materia?  @relation(fields: [materiaId], references: [id])
 }
 
 /**
