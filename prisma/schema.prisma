@@ -1,4 +1,4 @@
-generator client {
+ generator client {
   provider = "prisma-client-js"
 }
 
@@ -11,12 +11,13 @@ datasource db {
  * -------------------- Usuários --------------------
  */
 model User {
-  id       Int    @id @default(autoincrement())
-  email    String @unique
-  name     String
-  password String
-  role     String
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  password  String
+  role      String
 
+  notas             Nota[]             @relation("NotasDoAluno")
   avaliacao         Avaliacao[]
   diarios           Diario[]
   tarefas           Atividade[]
@@ -78,10 +79,10 @@ model TurmaUsuario {
 }
 
 model Turma {
-  idt       Int     @id @default(autoincrement())
-  nome      String
-  descricao String?
-
+  idt        Int        @id @default(autoincrement()) // <-- O nome é idt
+  nome       String
+  descricao  String?
+  notas      Nota[]     @relation("NotasDaTurma")
   usuarios   TurmaUsuario[]
   chamadas   Chamadas[]
   presencas  Presenca[]
@@ -97,8 +98,9 @@ model Turma {
  * -------------------- Materias --------------------
  */
 model Materia {
-  id       Int       @id @default(autoincrement())
-  nome     String    @unique
+  id       Int      @id @default(autoincrement())
+  nome     String   @unique
+  notas    Nota[]   @relation("NotasDaMateria")
   horarios Horario[]
 }
 
@@ -125,26 +127,24 @@ model Horario {
   horaInicio String
   horaFim    String
   turmaId    Int
-  materiaId  Int?      // opcional
-
+  materiaId  Int? // opcional
   // Relações
-  turma      Turma     @relation(fields: [turmaId], references: [idt])
-  materia    Materia?  @relation(fields: [materiaId], references: [id])
+  turma      Turma    @relation(fields: [turmaId], references: [idt])
+  materia    Materia? @relation(fields: [materiaId], references: [id])
 }
 
 /**
  * -------------------- Chamadas / Presença / Diário --------------------
  */
 model Chamadas {
-  id       Int      @id @default(autoincrement())
-  data     DateTime @default(now())
-  nome     String
-  materia  String
-  turmaIdt Int
-  userId   Int
-
-  turma     Turma      @relation(fields: [turmaIdt], references: [idt])
-  user      User       @relation(fields: [userId], references: [id])
+  id        Int      @id @default(autoincrement())
+  data      DateTime @default(now())
+  nome      String
+  materia   String
+  turmaIdt  Int
+  userId    Int
+  turma     Turma    @relation(fields: [turmaIdt], references: [idt])
+  user      User     @relation(fields: [userId], references: [id])
   presencas Presenca[]
 
   @@map("chamadas")
@@ -156,11 +156,10 @@ model Presenca {
   chamadaId Int
   turmaIdt  Int
   status    Status
-
-  turma   Turma    @relation(fields: [turmaIdt], references: [idt])
-  chamada Chamadas @relation(fields: [chamadaId], references: [id])
-  Diario  Diario[]
-  aluno   User     @relation("PresencaAluno", fields: [alunoId], references: [id])
+  turma     Turma    @relation(fields: [turmaIdt], references: [idt])
+  chamada   Chamadas @relation(fields: [chamadaId], references: [id])
+  Diario    Diario[]
+  aluno     User     @relation("PresencaAluno", fields: [alunoId], references: [id])
 
   @@map("presencas")
 }
@@ -172,9 +171,8 @@ model Diario {
   data     DateTime @default(now())
   status   Status
   userId   Int
-
-  user      User       @relation(fields: [userId], references: [id])
-  turma     Turma      @relation(fields: [turmaIdt], references: [idt])
+  user     User     @relation(fields: [userId], references: [id])
+  turma    Turma    @relation(fields: [turmaIdt], references: [idt])
   presencas Presenca[]
 
   @@map("diarios")
@@ -198,9 +196,8 @@ model Atividade {
   documento  String?
   userId     Int
   data       DateTime @default(now())
-
-  turma Turma @relation(fields: [turmaIdt], references: [idt])
-  user  User  @relation(fields: [userId], references: [id])
+  turma      Turma    @relation(fields: [turmaIdt], references: [idt])
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 model Avaliacao {
@@ -213,9 +210,8 @@ model Avaliacao {
   documento  String?
   userId     Int
   data       DateTime @default(now())
-
-  turma Turma @relation(fields: [turmaIdt], references: [idt])
-  user  User  @relation(fields: [userId], references: [id])
+  turma      Turma    @relation(fields: [turmaIdt], references: [idt])
+  user       User     @relation(fields: [userId], references: [id])
 
   @@map("avaliacoes")
 }
@@ -227,14 +223,13 @@ model Aviso {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    Int
-
-  user User @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   @@map("avisos")
 }
 
 /**
- * -------------------- Chat --------------------
+ * -------------------- Chat (COM ALTERAÇÕES) --------------------
  */
 model Chat {
   id            Int                @id @default(autoincrement())
@@ -251,15 +246,20 @@ model ChatParticipante {
 
   user User @relation(fields: [userId], references: [id])
   chat Chat @relation(fields: [chatId], references: [id])
+
+  // <-- [ADIÇÃO CRÍTICA] Impede um usuário de entrar 2x no mesmo chat
+  @@unique([userId, chatId]) 
 }
 
 model Mensagem {
   id          Int      @id @default(autoincrement())
-  texto       String
+  texto       String   @db.Text // <-- Melhorado para textos longos
   chatId      Int
   remetenteId Int
   data        DateTime @default(now())
-  createdAt   DateTime @default(now())
+  lida        Boolean  @default(false) // <-- [ADIÇÃO] Para a notificação de não lido
+
+  // O campo 'createdAt' foi removido por ser redundante com 'data'
 
   remetente User @relation("MensagensAutor", fields: [remetenteId], references: [id])
   chat      Chat @relation(fields: [chatId], references: [id])
@@ -288,9 +288,8 @@ model Calendario {
   ano      Int
   semestre Int
   eventos  EventoCalendario[]
-
-  turmaId Int   @unique
-  turma   Turma @relation("Turma_Calendario", fields: [turmaId], references: [idt])
+  turmaId  Int                @unique
+  turma    Turma              @relation("Turma_Calendario", fields: [turmaId], references: [idt])
 }
 
 model EventoCalendario {
@@ -306,4 +305,25 @@ enum EventoTipo {
   RECESSO
   SABADO_LETIVO
   FERIADO
+}
+
+/**
+ * -------------------- Notas --------------------
+ */
+model Nota {
+  id        Int    @id @default(autoincrement())
+  tipo      String // Ex: "Bimestre 1", "Trabalho Final", "Média"
+  valor     Float // A nota em si, ex: 8.5
+  // Relação com o Aluno
+  alunoId   Int
+  aluno     User   @relation("NotasDoAluno", fields: [alunoId], references: [id])
+  // Relação com a Matéria
+  materiaId Int
+  materia   Materia @relation("NotasDaMateria", fields: [materiaId], references: [id])
+  
+  // Relação com a Turma (para o filtro do Coordenador)
+  turmaIdt  Int
+  turma     Turma   @relation("NotasDaTurma", fields: [turmaIdt], references: [idt]) // <-- CORREÇÃO AQUI
+
+  @@map("notas")
 }

@@ -31,7 +31,8 @@ async function inicializarDados() {
           { nome: "2º Ano B" },
         ],
       });
-      console.log("Turmas criadas com sucesso!");
+      //localhost:3000/api/turmas/aluno/8ttp://localhost:3000/api/turmas/aluno/8
+      ttp: console.log("Turmas criadas com sucesso!");
     } else {
       console.log("Turmas já existem.");
     }
@@ -118,53 +119,74 @@ app.post("/api/cadastro", async (req, res) => {
 
 // Rota de login
 app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email e senha são obrigatórios." });
+  }
+
   try {
-    const { email, password } = req.body;
+    // 1. Encontrar o usuário no banco
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-    // Validação básica
-    if (!email?.trim() || !password?.trim()) {
-      return res
-        .status(400)
-        .json({ message: "Email e senha são obrigatórios." });
-    }
-
-    // Verifica se o usuário existe
-    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(400).json({ message: "Credenciais inválidas." });
+      return res.status(404).json({ message: "Usuário não encontrado." });
     }
 
-    // Confere a senha (no schema pode ser passwordHash ou outro campo)
+    // 2. Verificar a senha
     const isPasswordValid = await bcrypt.compare(password, user.password);
+
     if (!isPasswordValid) {
-      return res.status(400).json({ message: "Credenciais inválidas." });
+      return res.status(401).json({ message: "Senha inválida." });
     }
 
-    // Gera o token JWT
+    // ======================================================================
+    //     AQUI ESTÁ A CORREÇÃO QUE VOCÊ PRECISA
+    // ======================================================================
+
+    let turmaIdt = null; // Inicia como nulo
+
+    // 3. Se o usuário for um aluno, buscar o ID da sua turma
+    if (user.role === "aluno_vall") {
+      // Busca a primeira turma associada a este usuário
+      const relacaoTurma = await prisma.turmaUsuario.findFirst({
+        where: { userId: user.id },
+        select: { turmaIdt: true }, // Só precisamos do ID da turma
+      });
+
+      if (relacaoTurma) {
+        turmaIdt = relacaoTurma.turmaIdt;
+      }
+    }
+
+    // 4. Montar o objeto do usuário (o "payload") para o front-end
+    // Este é o objeto que será salvo no localStorage como 'user'
+    const userPayload = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      turmaIdt: turmaIdt, // <--- A INFORMAÇÃO DA TURMA ESTÁ AQUI
+    };
+
+    // ======================================================================
+    //     FIM DA CORREÇÃO
+    // ======================================================================
+
+    // 5. Gerar o Token JWT
     const token = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_SECRET || "dev_secret",
-      { expiresIn: "7d" }
+      process.env.JWT_SECRET, // Crie esta variável no seu .env
+      { expiresIn: "8h" }
     );
 
-    // Remove a senha antes de enviar ao cliente
-    const { password: _, ...userSafe } = user;
-
-    res.status(200).json({
-      message: "Login realizado com sucesso!",
-      token,
-      user: {
-        id: userSafe.id,
-        nome: userSafe.nome ?? userSafe.name,
-        email: userSafe.email,
-        role: userSafe.role,
-      },
-    });
-  } catch (err) {
-    console.error("Erro no servidor (login):", err);
-    res
-      .status(500)
-      .json({ message: "Erro no servidor, tente novamente mais tarde." });
+    // 6. Enviar a resposta completa para o front-end
+    res.status(200).json({ token, user: userPayload });
+  } catch (error) {
+    console.error("Erro no login:", error);
+    res.status(500).json({ message: "Erro interno do servidor." });
   }
 });
 // Protege as rotas abaixo com o middleware de autenticação
@@ -242,12 +264,34 @@ app.post("/api/atividades", upload.single("documento"), async (req, res) => {
     return res.status(500).json({ message: "Erro ao criar atividade." });
   }
 });
-app.get("/api/atividades", auth, async (req, res) => {
+// CÓDIGO CORRIGIDO (FILTRA SE O ?turmaId EXISTIR)
+app.get("/api/atividades", async (req, res) => {
+  // 1. Pega o 'turmaId' da URL (ex: /api/atividades?turmaId=11)
+  const { turmaId } = req.query;
+
+  // 2. Prepara o objeto 'where' para o Prisma
+  const whereClause = {};
+
+  // 3. Se um 'turmaId' foi enviado, adiciona ele ao filtro
+  //    (Lembre-se de converter para Número, pois 'req.query' é sempre string)
+  if (turmaId) {
+    whereClause.turmaIdt = Number(turmaId);
+  }
+
+  // Se 'turmaId' não for enviado (como o Coordenador faz),
+  // 'whereClause' ficará vazio, e o Prisma buscará TUDO.
+
   try {
-    const atividades = await prisma.atividade.findMany();
-    res.status(200).json(atividades);
-  } catch (err) {
-    console.error("Erro ao buscar atividades:", err);
+    const atividades = await prisma.atividade.findMany({
+      where: whereClause, // <--- A MÁGICA ACONTECE AQUI
+      orderBy: {
+        dataInicio: "desc", // Opcional: ordenar da mais nova para a mais antiga
+      },
+    });
+
+    res.json(atividades);
+  } catch (error) {
+    console.error("Erro ao buscar atividades:", error);
     res.status(500).json({ message: "Erro ao buscar atividades." });
   }
 });
@@ -387,13 +431,38 @@ app.post("/api/avaliacoes", upload.single("documento"), async (req, res) => {
     return res.status(500).json({ message: "Erro ao criar avaliação." });
   }
 });
+// No seu servidor back-end (ex: server.js)
+// NO SEU BACK-END (server.js)
+// (Substitua sua rota GET /api/avaliacoes antiga por esta)
 
-app.get("/api/avaliacoes", auth, async (req, res) => {
+app.get("/api/avaliacoes", async (req, res) => {
+  // 1. Pega o 'turmaId' da URL (ex: /api/avaliacoes?turmaId=11)
+  const { turmaId } = req.query;
+
+  // 2. Prepara o objeto 'where' para o Prisma
+  const whereClause = {};
+
+  // 3. Se um 'turmaId' foi enviado, adiciona ele ao filtro
+  if (turmaId) {
+    whereClause.turmaIdt = Number(turmaId);
+  }
+
+  // Se 'turmaId' não for enviado (como o Professor/Coord. faz),
+  // 'whereClause' ficará vazio, e o Prisma buscará TUDO.
+
   try {
-    const avaliacoes = await prisma.avaliacao.findMany();
-    res.status(200).json(avaliacoes);
-  } catch (err) {
-    console.error("Erro ao buscar avaliações:", err);
+    // ATENÇÃO: Verifique se o seu modelo no Prisma se chama 'avaliacao'
+    // (pode ser 'avaliacoe' ou 'Avaliacao')
+    const avaliacoes = await prisma.avaliacao.findMany({
+      where: whereClause, // <--- O FILTRO REAL ACONTECE AQUI
+      orderBy: {
+        dataInicio: "desc",
+      },
+    });
+
+    res.json(avaliacoes);
+  } catch (error) {
+    console.error("Erro ao buscar avaliações:", error);
     res.status(500).json({ message: "Erro ao buscar avaliações." });
   }
 });
@@ -1662,6 +1731,310 @@ app.get("/api/horarios/:id", async (req, res) => {
   } catch (error) {
     console.error("Erro GET /api/horarios/:id:", error);
     res.status(500).json({ error: "Erro ao buscar horário" });
+  }
+});
+
+// sqwdwq
+// ::::
+
+// GET /api/turmas/aluno/:id
+app.get("/aluno/:id", async (req, res) => {
+  const alunoId = parseInt(req.params.id);
+
+  if (isNaN(alunoId)) {
+    return res.status(400).json({ error: "ID de aluno inválido" });
+  }
+
+  try {
+    // Busca a turma onde o aluno está
+    const turmaAluno = await prisma.turma.findFirst({
+      where: {
+        usuarios: {
+          some: {
+            userId: alunoId,
+          },
+        },
+      },
+      include: {
+        usuarios: true, // opcional, se quiser incluir os alunos
+      },
+    });
+
+    if (!turmaAluno) {
+      return res.status(404).json({ error: "Turma do aluno não encontrada" });
+    }
+
+    return res.json(turmaAluno);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Erro ao buscar turma do aluno" });
+  }
+});
+app.get("/api/alunos/:id", async (req, res) => {
+  try {
+    const alunoId = req.params.id;
+    const aluno = await Aluno.findByPk(alunoId, {
+      include: [{ model: Turma, as: "turma" }], // Assumindo relação Aluno.belongsTo(Turma)
+    });
+    if (!aluno)
+      return res.status(404).json({ message: "Aluno não encontrado." });
+    res.json(aluno); // { id: 8, nome: '...', turma: { idt: 1, nome: 'Turma A' } }
+  } catch (error) {
+    res.status(500).json({ message: "Erro interno." });
+  }
+});
+// OU Fallback: GET /api/turmas/aluno/:id (só turma)
+app.get("/api/turmas/aluno/:id", async (req, res) => {
+  try {
+    const alunoId = req.params.id;
+    const aluno = await Aluno.findByPk(alunoId);
+    if (!aluno || !aluno.turmaId)
+      return res.status(404).json({ message: "Sem turma." });
+    const turma = await Turma.findByPk(aluno.turmaId);
+    res.json(turma); // { idt: 1, nome: 'Turma A' }
+  } catch (error) {
+    res.status(500).json({ message: "Erro interno." });
+  }
+});
+// NO SEU BACK-END (ex: server.js)
+
+// --- Rota para CRIAR uma nova Matéria ---
+app.post("/api/materia", async (req, res) => {
+  const { nome } = req.body; // A rota espera um JSON: { "nome": "Nova Matéria" }
+
+  if (!nome) {
+    return res.status(400).json({ message: "O campo 'nome' é obrigatório." });
+  }
+
+  try {
+    // Verifica se a matéria já existe (opcional, mas recomendado)
+    const materiaExistente = await prisma.materia.findUnique({
+      where: { nome: nome },
+    });
+
+    if (materiaExistente) {
+      return res
+        .status(409)
+        .json({ message: "Uma matéria com esse nome já existe." });
+    }
+
+    // Cria a nova matéria no banco de dados
+    const novaMateria = await prisma.materia.create({
+      data: {
+        nome: nome,
+      },
+    });
+
+    res
+      .status(201)
+      .json({ message: "Matéria criada com sucesso!", materia: novaMateria });
+  } catch (error) {
+    console.error("Erro ao criar matéria:", error);
+    res.status(500).json({ message: "Erro interno do servidor." });
+  }
+});
+
+// Notas
+// --- ROTAS DE NOTAS (CRUD) ---
+// (CORRIGIDO PARA O SCHEMA CORRETO)
+
+// 1. (Coord.) LANÇAR UMA NOVA NOTA
+app.post("/api/notas", async (req, res) => {
+  // O 'turmaId' voltou, pois agora está no schema
+  const { userId, materiaId, turmaIdt, tipo, valor } = req.body;
+
+  if (
+    userId === undefined ||
+    materiaId === undefined ||
+    turmaIdt === undefined ||
+    tipo === undefined ||
+    valor === undefined
+  ) {
+    return res.status(400).json({
+      message:
+        "Campos (userId, materiaId, turmaIdt, tipo, valor) são obrigatórios.",
+    });
+  }
+
+  try {
+    const novaNota = await prisma.Nota.create({
+      // Nome correto: Nota
+      data: {
+        tipo: String(tipo),
+        valor: parseFloat(valor),
+        alunoId: Number(userId), // Nome do campo no schema: alunoId
+        materiaId: Number(materiaId),
+        turmaIdt: Number(turmaIdt), // Nome do campo no schema: turmaIdt
+      },
+    });
+    res.status(201).json(novaNota);
+  } catch (error) {
+    console.error("Erro ao criar nota:", error);
+    res.status(500).json({ message: "Erro ao cadastrar nota." });
+  }
+});
+
+// 2. (Coord.) BUSCAR NOTAS (com filtros de turma e matéria)
+app.get("/api/notas", async (req, res) => {
+  const { turmaId, materiaId } = req.query; // No front-end é 'turmaId', mas no schema é 'turmaIdt'
+
+  if (!turmaId || !materiaId) {
+    return res
+      .status(400)
+      .json({ message: "Os filtros turmaId e materiaId são obrigatórios." });
+  }
+
+  try {
+    const notas = await prisma.Nota.findMany({
+      // Nome correto: Nota
+      where: {
+        turmaIdt: Number(turmaId), // Filtra pelo 'turmaIdt'
+        materiaId: Number(materiaId),
+      },
+      include: {
+        aluno: {
+          // Nome da relação no schema: aluno
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { aluno: { name: "asc" } },
+    });
+    res.json(notas);
+  } catch (error) {
+    console.error("Erro ao buscar notas:", error);
+    res.status(500).json({ message: "Erro ao buscar notas." });
+  }
+});
+
+// 3. (Aluno) BUSCAR NOTAS POR ID DO ALUNO
+app.get("/api/notas/aluno/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const notas = await prisma.Nota.findMany({
+      // Nome correto: Nota
+      where: {
+        alunoId: Number(id), // Nome do campo no schema: alunoId
+      },
+      include: {
+        materia: { select: { nome: true } }, // Relação 'materia'
+      },
+      orderBy: { materia: { nome: "asc" } },
+    });
+    res.json(notas);
+  } catch (error) {
+    console.error("Erro ao buscar notas do aluno:", error);
+    res.status(500).json({ message: "Erro ao buscar notas do aluno." });
+  }
+});
+
+// 4. (Coord.) ATUALIZAR UMA NOTA (Editar)
+app.put("/api/notas/:id", async (req, res) => {
+  const { id } = req.params;
+  const { userId, materiaId, turmaIdt, tipo, valor } = req.body; // 'turmaIdt' voltou
+
+  try {
+    const notaAtualizada = await prisma.Nota.update({
+      // Nome correto: Nota
+      where: { id: Number(id) },
+      data: {
+        tipo: String(tipo),
+        valor: parseFloat(valor),
+        alunoId: Number(userId), // Nome do campo no schema: alunoId
+        materiaId: Number(materiaId),
+        turmaIdt: Number(turmaIdt), // Nome do campo no schema: turmaIdt
+      },
+    });
+    res.json(notaAtualizada);
+  } catch (error) {
+    console.error("Erro ao atualizar nota:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "Nota não encontrada." });
+    }
+    res.status(500).json({ message: "Erro ao atualizar nota." });
+  }
+});
+
+// 5. (Coord.) EXCLUIR UMA NOTA
+app.delete("/api/notas/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await prisma.Nota.delete({
+      // Nome correto: Nota
+      where: {
+        id: Number(id),
+      },
+    });
+    res.status(200).json({ message: "Nota excluída com sucesso." });
+  } catch (error) {
+    console.error("Erro ao excluir nota:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "Nota não encontrada." });
+    }
+    res.status(500).json({ message: "Erro ao excluir nota." });
+  }
+});
+// Notas
+// Adicione esta rota ao seu back-end (server.js)
+
+app.get("/api/frequencia/aluno/:id", async (req, res) => {
+  const { id } = req.params; // ID do Aluno (vem do req.params)
+  const { mes, ano } = req.query; // Mês e Ano (vem do req.query)
+
+  if (!mes || !ano) {
+    return res
+      .status(400)
+      .json({ message: "O 'mes' e 'ano' são obrigatórios." });
+  }
+
+  const alunoIdNum = Number(id);
+  const anoNum = Number(ano);
+  const mesNum = Number(mes); // API envia 1-indexado (ex: "10" para Outubro)
+
+  // Cria as datas de início e fim para o filtro
+  const startDate = new Date(anoNum, mesNum - 1, 1); // Mês no JS é 0-indexado
+  const endDate = new Date(anoNum, mesNum, 0, 23, 59, 59); // Dia 0 do próximo mês = último dia deste mês
+
+  try {
+    // Busca no modelo Presenca, filtrando pelo alunoId
+    // E também filtrando pela data que está no modelo 'Chamadas' relacionado
+    const presencas = await prisma.Presenca.findMany({
+      where: {
+        alunoId: alunoIdNum,
+        // Filtra a relação 'chamada'
+        chamada: {
+          data: {
+            gte: startDate, // Maior ou igual ao primeiro dia do mês
+            lte: endDate, // Menor ou igual ao último dia do mês
+          },
+        },
+      },
+      include: {
+        // Inclui os dados da chamada (especialmente a data)
+        chamada: {
+          select: { data: true, materia: true, nome: true },
+        },
+      },
+    });
+
+    // Formata os dados para o front-end
+    // O front-end espera { id, status, data }
+    const resultado = presencas.map((p) => ({
+      id: p.id,
+      status: p.status, // "PRESENCA" ou "FALTA" (do seu Enum 'Status')
+      data: p.chamada.data,
+      materia: p.chamada.materia,
+      chamadaNome: p.chamada.nome,
+    }));
+
+    res.json(resultado);
+  } catch (error) {
+    console.error("Erro ao buscar frequência do aluno:", error);
+    res.status(500).json({ message: "Erro ao buscar frequência." });
   }
 });
 // Inicializa o servidor

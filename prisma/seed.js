@@ -1,34 +1,49 @@
-// prisma/seed.js
+// Usa 'import' em vez de 'require'
 import { PrismaClient } from "@prisma/client";
-
 const prisma = new PrismaClient();
 
+// Lista de matérias que você quer pré-cadastrar
+const materiasParaCadastrar = [
+  "Matemática",
+  "Português",
+  "História",
+  "Geografia",
+  "Ciências",
+  "Inglês",
+  "Educação Física",
+  "Artes",
+  "Filosofia",
+  "Sociologia",
+  "Física",
+  "Química",
+  "Biologia",
+  "Intervalo",
+  "Sem Aula",
+];
+
 async function main() {
-  const materias = [
-    { nome: "Matemática" },
-    { nome: "Português" },
-    { nome: "História" },
-    { nome: "Geografia" },
-    { nome: "Química" },
-  ];
+  console.log("Iniciando o seeding de matérias...");
 
-  for (const materia of materias) {
-    await prisma.materia.upsert({
-      where: { nome: materia.nome },
-      update: {},
-      create: materia,
-    });
-  }
+  const dadosMaterias = materiasParaCadastrar.map((nome) => ({
+    nome: nome,
+  }));
 
-  console.log("✅ Matérias inseridas com sucesso!");
+  // Insere todas de uma vez, pulando duplicatas
+  const resultado = await prisma.materia.createMany({
+    data: dadosMaterias,
+    skipDuplicates: true,
+  });
+
+  console.log(`${resultado.count} novas matérias foram cadastradas.`);
+  console.log("Seeding de matérias finalizado.");
 }
 
+// Executa a função e fecha a conexão
 main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
-  .catch(async (e) => {
+  .catch((e) => {
     console.error(e);
-    await prisma.$disconnect();
     process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
   });
