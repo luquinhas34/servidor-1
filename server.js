@@ -2037,6 +2037,7 @@ app.get("/api/frequencia/aluno/:id", async (req, res) => {
     res.status(500).json({ message: "Erro ao buscar frequência." });
   }
 });
+
 // Inicializa o servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
